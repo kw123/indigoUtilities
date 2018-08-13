@@ -1,0 +1,287 @@
+<?xml version="1.0"?>
+<Actions>
+
+    <Action id="printMACtemperatures">
+    <Name>print MAC cpu and fan temperatures to log</Name>
+    <CallbackMethod>printMACtemperaturesAction</CallbackMethod>
+    </Action>
+
+    <Action id="printPluginidNamestoLogfile">
+    <Name>print Pluginid, Names, cpu,...  to Log file</Name>
+    <CallbackMethod>printPluginidNamestoLogfileAction</CallbackMethod>
+    </Action>
+
+    <Action id="executeBACKUPActionID">
+    <Name>Create and test a backup of the SQLITE db</Name>
+    <Label>Create and test a backup of the SQLITE db</Label>
+    <CallbackMethod>executeBACKUPAction</CallbackMethod>
+    </Action>
+    
+    <Action id="executeBACKUPpostgresAction">
+    <Name>Create dumpfile of the postgres db in indigoUtilities directory</Name>
+    <Label>Create dumpfile.zip file of the postgres db in indigoUtilities directory</Label>
+    <CallbackMethod>executeBACKUPpostgresAction</CallbackMethod>
+    </Action>
+    
+    <Action id="IndigoBackup">
+        <Name>Create a backup of the indigo config files and config database in indigoUtilities directory</Name>
+        <CallbackMethod>executeBACKUPindigoAction</CallbackMethod>
+    </Action>
+
+    <Action id="actionDatabaseSqueeze">
+    <Name>squeezeDatabase</Name>
+    <Label>squeezeDatabase</Label>
+    <CallbackMethod>actionDatabaseSqueeze</CallbackMethod>
+    </Action>
+    <Action id="actionDatabaseSqueezeQuiet">
+    <Name>squeezeDatabaseQuiet</Name>
+    <Label>squeezeDatabaseQuiet</Label>
+    <CallbackMethod>actionDatabaseSqueezeQuiet</CallbackMethod>
+    </Action>
+    
+    <Action id="printSQLaction">
+        <Name>Select Variable or Device and State to be retrieved from SQLite/postGRES</Name>
+        <CallbackMethod>printSQLaction</CallbackMethod>
+        <ConfigUI>
+                <Field
+                    id="infoLabel1"
+                    type="label">
+                    <Label>Retrieve from SQLite/postGRES:  Variable or Device/State(s),  print to (log)file</Label>
+                </Field>
+
+                <Field
+                    id="devOrVar"
+                    type="menu"
+                    defaultValue="dev"
+                    tooltip="">
+                    <List>
+                        <Option value="dev" >devices </Option>
+                        <Option value="var" >variables </Option>
+                    </List>
+                    <Label>devices or variables?</Label>
+                    <CallbackMethod>devOrVarCALLBACK</CallbackMethod>
+                </Field>
+
+                <Field
+                    id="variable"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="var"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Variable:</Label>
+                    <List class="indigo.variables" filter=""  dynamicReload="true"/>
+                    <CallbackMethod>pickVariableCALLBACK</CallbackMethod>
+                </Field>
+                
+                <Field
+                    id="device"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Device:</Label>
+                    <List class="self" filter="" method="filterDevices" dynamicReload="true"/>
+                    <CallbackMethod>pickDeviceCALLBACKAction</CallbackMethod>
+                </Field>
+
+
+                <Field
+                    id="state0"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    defaultValue=""
+                    tooltip="* if for all states" >
+                    <Label>Select state0:</Label>
+                    <List class="self" filter="" method="filterStates0" dynamicReload="true"/>
+                </Field>
+                
+                <Field
+                    id="state0Condition"
+                    type="menu"
+                    defaultValue="any">
+                    <Label>Select state0 condition:</Label>
+                    <List>
+                        <Option value="eq"    >equal</Option>
+                        <Option value="ne"    >not equal</Option>
+                        <Option value="any"   >any</Option>
+                    </List>
+                </Field>
+                <Field
+                    id="state0Value"
+                    type="textfield"
+                    visibleBindingId="state0Condition"
+                    visibleBindingValue="eq,ne"
+                    defaultValue="">
+                    <Label>value to be compared to</Label>
+                </Field>
+                
+                <Field
+                    id="state1"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    defaultValue="0">
+                    <Label>Select state1:</Label>
+                    <List class="self" filter="" method="filterStates" dynamicReload="true"/>
+                </Field>
+                <Field
+                    id="state2"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    defaultValue="0">
+                    <Label>Select state2:</Label>
+                    <List class="self" filter="" method="filterStates" dynamicReload="true"/>
+                </Field>
+                <Field
+                    id="state3"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    defaultValue="0">
+                    <Label>Select state3:</Label>
+                    <List class="self" filter="" method="filterStates" dynamicReload="true"/>
+                </Field>
+                <Field
+                    id="state4"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    defaultValue="0">
+                    <Label>Select state4:</Label>
+                    <List class="self" filter="" method="filterStates" dynamicReload="true"/>
+                </Field>
+
+
+                <Field
+                    id="id"
+                    type="textfield"
+                    defaultValue="0"
+                    tooltip="">
+                    <Label>first id (if blank select the LAST xx records)</Label>
+                </Field>
+                
+                <Field
+                    id="numberOfRecords"
+                    type="menu"
+                    defaultValue="1"
+                    tooltip="">
+                    <List>
+                        <Option value="1"     >    1</Option>
+                        <Option value="2"     >    2</Option>
+                        <Option value="5"     >    5</Option>
+                        <Option value="10"    >   10</Option>
+                        <Option value="50"    >   50</Option>
+                        <Option value="100"   >  100</Option>
+                        <Option value="500"   >  500</Option>
+                        <Option value="1000"  > 1000</Option>
+                        <Option value="5000"  > 5000</Option>
+                        <Option value="10000" >10000</Option>
+                        <Option value="noLimit"> dont limit the number of records.. use carefully</Option>
+                    </List>
+                    <Label>how many records to retrieve:</Label>
+                </Field>
+                
+                <Field
+                    id="printFile"
+                    type="textfield"
+                    defaultValue=""
+                    tooltip="">
+                    <Label>print to file ( in ~Documents/utilities/ empty=Indigo Log):</Label>
+                </Field>
+        
+                <Field
+                    id="separator"
+                    type="textfield"
+                    defaultValue=""
+                    tooltip="">
+                    <Label>separator between fields (empty=default sql format):</Label>
+                </Field>
+
+                <Field
+                    id="header"
+                    type="menu"
+                    defaultValue="yes"
+                    tooltip="">
+                    <List>
+                        <Option value="yes" >yes</Option>
+                        <Option value="no"	>no</Option>
+                    </List>
+                    <Label>print header:</Label>
+                </Field>
+
+                <Field
+                    id="msg"
+                    type="textfield"
+                    defaultValue="Enter data"
+                    tooltip="" >
+                    <Label>Status-----------------></Label>
+                </Field>
+        </ConfigUI>
+    </Action>
+
+    <Action id="pruneDevsandVarsAction">
+        <Name>Prune individual devices and variables in SQLlogger</Name>
+        <CallbackMethod>pruneDevsandVarsAction</CallbackMethod>
+        <ConfigUI>
+            <Field  id="devOrVar"
+                    type="menu"
+                    defaultValue="dev"
+                    tooltip="">
+                    <Label>device or variable:</Label>
+                    <List>
+                        <Option value="dev" >device </Option>
+                        <Option value="var" >variable</Option>
+                    </List>
+            </Field>
+            <Field
+                    id="variable"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="var"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Variable:</Label>
+                    <List class="indigo.variables" filter=""  dynamicReload="true"/>
+                    <CallbackMethod>pickVariableCALLBACK</CallbackMethod>
+            </Field>
+                
+            <Field
+                    id="device"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Device:</Label>
+                    <List class="self" filter="" method="filterDevices" dynamicReload="true"/>
+                    <CallbackMethod>pickDeviceCALLBACKAction</CallbackMethod>
+            </Field>
+
+            <Field  id="deleteBeforeThisDays"
+                    type="menu"
+                    defaultValue="186"
+                    tooltip="">
+                    <Label> keep how much data:</Label>
+                    <List>
+                        <Option value="1" > 1 day</Option>
+                        <Option value="2" > 2 days</Option>
+                        <Option value="3" > 3 days</Option>
+                        <Option value="4" > 4 days</Option>
+                        <Option value="5" > 5 days</Option>
+                        <Option value="6" > 6 days</Option>
+                        <Option value="7" > 1 week</Option>
+                        <Option value="14" > 2 weeks</Option>
+                        <Option value="21" > 3 weeks</Option>
+                        <Option value="31" > 1 month</Option>
+                        <Option value="62" > 2 months</Option>
+                        <Option value="93" > 3 months</Option>
+                        <Option value="124" > 4 months</Option>
+                        <Option value="155" > 5 months</Option>
+                        <Option value="186" > 6 months</Option>
+                    </List>
+            </Field>
+
+        </ConfigUI>
+    </Action>
+
+</Actions>

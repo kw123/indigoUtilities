@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<PluginConfig>
+    <Field
+        id="infoLabel1"
+        type="label">
+        <Label>show SQL data in indigo logfile Plugin                          Developed by Karl Wachs</Label>
+    </Field>
+
+    <Field
+        id="debugLevel"
+        type="menu"
+        defaultValue="0" >
+        <List>
+            <Option value="0"    >no debug logging</Option>
+            <Option value="1"    >logic</Option>
+            <Option value="2"    >SQL </Option>
+            <Option value="255"  >all </Option>
+        </List>
+        <Label>debug Enable for: </Label>
+    </Field>
+
+
+
+    <Field
+        id="cpuTempFreq"
+        type="menu"
+        defaultValue="" >
+        <Label>Enable MAC cpu temp and fan speed variable populations:</Label>
+        <List>
+            <Option value=""    >off</Option>
+            <Option value="20"  >check every 20 secs</Option>
+            <Option value="30"  >check every 30 secs</Option>
+            <Option value="60"  >check every 1 minute</Option>
+            <Option value="120" >check every 2 minutes</Option>
+            <Option value="180" >check every 3 minutes</Option>
+            <Option value="240" >check every 4 minutes</Option>
+            <Option value="300" >check every 5 minutes</Option>
+        </List>
+    </Field>
+    <Field
+        id="cpuTempFormat"
+        type="textfield"
+        defaultValue="%.1f" 
+        visibleBindingId="cpuTempFreq"
+        visibleBindingValue="20,30,60,120,180,240,300">
+        <Label>... temp format:</Label>
+    </Field>
+
+    <Field
+        id="cpuTempUnit"
+        type="textfield"
+        defaultValue="C" 
+        visibleBindingId="cpuTempFreq"
+        visibleBindingValue="20,30,60,120,180,240,300">
+        <Label>... temp Unit:</Label>
+        <List>
+            <Option value="C"  >C</Option>
+            <Option value="F"  >F</Option>
+        </List>
+    </Field>
+
+
+    <Field
+        id="liteOrPsql"
+        type="menu"
+        defaultValue="sqlite" >
+        <Label>Pick SQL database tool:</Label>
+        <List>
+            <Option value="sqlite"  >sqlLite used in SQL logger</Option>
+            <Option value="psql"    >postgre used in SQL logger</Option>
+        </List>
+    </Field>
+    
+    <Field
+        visibleBindingId="liteOrPsql"
+        visibleBindingValue="psql"
+        id="liteOrPsqlString"
+        type="textfield"
+        defaultValue="/Library/PostgreSQL/bin/psql indigo_history postgres ">
+        <Label>postgre command string </Label>
+    </Field>
+    <Field
+        id="orderByID"
+        type="menu"
+        defaultValue="no">
+        <List>
+            <Option value="yes"  >yes</Option>
+            <Option value="no"   >no</Option>
+        </List>
+        <Label>use ORDER by id (when id column is not ordered, should be on for POSTGRES)</Label>
+    </Field>
+    <Field
+        id="maxSQLlength"
+        type="menu"
+        defaultValue="200000">
+        <List>
+            <Option value="50000"   >50,000</Option>
+            <Option value="100000"  >100,000</Option>
+            <Option value="200000"  >200,000</Option>
+            <Option value="400000"  >400,000</Option>
+            <Option value="500000"  >500,000</Option>
+            <Option value="1000000"  > 1,000,000</Option>
+            <Option value="2000000"  > 2,000,000</Option>
+            <Option value="10000000000"  > unlimited</Option>
+        </List>
+        <Label>max number of bytes in sql delete statement for squeeze-delete duplicate records (SQLITE has lower limit)</Label>
+    </Field>
+
+
+
+    <Field 
+        id="noOfBackupCopies"
+        type="menu"
+        defaultValue="no">
+        <List>
+            <Option value="1"  >1</Option>
+            <Option value="2"  >2</Option>
+            <Option value="3"  >3</Option>
+            <Option value="4"  >4</Option>
+            <Option value="5"  >5</Option>
+            <Option value="6"  >6</Option>
+            <Option value="7"  >7</Option>
+        </List>
+        <Label>keep how many backup copies</Label>
+    </Field>
+        
+    <Field         
+        id="infoLabelShutDown"
+        type="label">
+        <Label>pick indigo action that will be executed when Indigo is shuting down</Label>
+    </Field>
+
+
+</PluginConfig>

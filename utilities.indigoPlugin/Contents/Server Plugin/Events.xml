@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<Events>
+	<Event id="badBackup">	<Name>SQL backup not successful</Name> </Event>
+</Events>
