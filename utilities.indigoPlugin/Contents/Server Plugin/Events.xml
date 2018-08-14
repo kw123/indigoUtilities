@@ -1,4 +1,66 @@
 <?xml version="1.0"?>
 <Events>
 	<Event id="badBackup">	<Name>SQL backup not successful</Name> </Event>
+	
+    <Event id="pluginCPUconsumption">
+        <Name>CPU of plugin consumption is over threshold</Name>
+        <ConfigUI>
+            <Field    id="msg" type="textfield" defaultValue="">
+                <Label>Message from plugin:</Label>
+            </Field>
+            <Field    id="break0" type="label" defaultValue=""> </Field>
+
+            <Field     id="newOrExistingPlugin" type="menu" defaultValue="">
+                <Label>Select  sensors in Event:</Label>
+                <List>
+                    <Option value="new"      >add new </Option>
+                    <Option value="existing" >edit</Option>
+                    <Option value="delete"   >delete </Option>
+                </List>
+            </Field>
+
+            <Field     id="selectExistingPlugin" type="menu" defaultValue="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="existing,delete">
+                <Label>Select  plugin to be edited/deleted:</Label>
+                <List class="self" filter="existing" method="filterPlugin"  dynamicReload="true"/>
+            </Field>
+
+            <Field     id="selectNewPlugin" type="menu" defaultValue="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="new">
+                <Label>Select plugin to be added:</Label>
+                <List class="self" filter="new" method="filterPlugin"  dynamicReload="true"/>
+            </Field>
+
+            <Field    id="confirmRemovePlugin" type="button" tooltip="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="delete" >
+                <Label>To remove </Label><Title>CLICK</Title> <CallbackMethod>buttonconfirmRemovePluginCALLBACK</CallbackMethod>
+            </Field>
+
+            <Field    id="cpuThreshold" type="menu" tooltip="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="new,existing">
+                <Label>trigger if cpu usage over 5 minutes is &gt; xx secs:</Label>
+                <List>
+                    <Option value="1"   >1 sec - for testing</Option>
+                    <Option value="5"   >5 sec </Option>
+                    <Option value="6"   >6 sec </Option>
+                    <Option value="7"   >7 sec </Option>
+                    <Option value="8"   >8 sec </Option>
+                    <Option value="9"   >9 sec </Option>
+                    <Option value="10"  >10 sec </Option>
+                    <Option value="12"  >12 sec </Option>
+                    <Option value="15"  >15 sec </Option>
+                    <Option value="20"  >20 sec </Option>
+                    <Option value="25"  >25 sec </Option>
+                    <Option value="30"  >30 sec </Option>
+                    <Option value="40"  >40 sec </Option>
+                    <Option value="50"  >50 sec </Option>
+                    <Option value="70"  >70 sec </Option>
+                </List>
+            </Field>
+
+            <Field    id="confirmEditPluginSave" type="button" tooltip="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="new,existing">
+                <Label>To save settings</Label><Title>CLICK</Title> <CallbackMethod>buttonConfirmPluginCALLBACK</CallbackMethod>
+            </Field>
+        </ConfigUI>
+
+    </Event>
+
+
+
 </Events>

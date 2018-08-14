@@ -3,7 +3,7 @@
     <Field
         id="infoLabel1"
         type="label">
-        <Label>show SQL data in indigo logfile Plugin                          Developed by Karl Wachs</Label>
+        <Label>utilities Plugin                          Developed by Karl Wachs</Label>
     </Field>
 
     <Field
@@ -48,7 +48,7 @@
 
     <Field
         id="cpuTempUnit"
-        type="textfield"
+        type="menu"
         defaultValue="C" 
         visibleBindingId="cpuTempFreq"
         visibleBindingValue="20,30,60,120,180,240,300">
@@ -124,11 +124,5 @@
         <Label>keep how many backup copies</Label>
     </Field>
         
-    <Field         
-        id="infoLabelShutDown"
-        type="label">
-        <Label>pick indigo action that will be executed when Indigo is shuting down</Label>
-    </Field>
-
 
 </PluginConfig>
