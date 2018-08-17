@@ -8,3 +8,4 @@
 * list indigo device info
 * zwave reporting
 * Mac temperatures and fan speeds
+* setup trigger on cpu usage for specific plugins, will also populate CPU _ usage _ plugid variable with cpu usage in 100 secs

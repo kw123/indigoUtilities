@@ -259,29 +259,33 @@ class Plugin(indigo.PluginBase):
     def getActivePlugins(self,psef):
 
         plugList= []
-        ##ret = subprocess.Popen("/bin/ps -ef | grep 'MacOS/IndigoPluginHost' | grep -v grep",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]
-        lines = psef.strip("\n").split("\n")
-        version =" "
-        for line in lines:
-            #indigo.server.log(line)
-            if len(line) < 40: continue
-            if line.find("MacOS/IndigoPluginHost") ==-1: continue
-            items = line.split()
-            if len(items) < 7: continue
-            if line.find("indigoPlugin") ==-1: continue
-            #self.myLog(-1,unicode(items))
-            pCPU  = items[6]
-            pID   = items[1]
-            items = line.split(" -f")
-            pName = items[1].split(".indigoPlugin")[0]
-            try:
-                plugId  = plistlib.readPlist(self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Info.plist")["CFBundleIdentifier"]
-                version = plistlib.readPlist(self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Info.plist")["PluginVersion"]
-            except  Exception, e:
-                    self.myLog(-1," print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
-                    version = " "
-                    plugId  = " "
-            plugList.append((pName,pCPU,pID,version,plugId))
+        try:
+            ##ret = (subprocess.Popen("/bin/ps -ef | grep 'MacOS/IndigoPluginHost' | grep -v grep | grep Cynic",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]).encode('utf-8')
+            lines = psef.strip(u"\n").split(u"\n")
+            version =" "
+            for line in lines:
+                #indigo.server.log(line)
+                if len(line) < 40: continue
+                if line.find("MacOS/IndigoPluginHost") == -1: continue
+                items = line.split()
+                if len(items) < 7: continue
+                if line.find("indigoPlugin") == -1: continue
+                #self.myLog(-1,unicode(items))
+                pCPU  = items[6]
+                pID   = items[1]
+                items = line.split(" -f")
+                pName = items[1].split(".indigoPlugin")[0]
+                try:
+                    plugId  = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["CFBundleIdentifier"]
+                    version = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["PluginVersion"]
+                except  Exception, e:
+                        self.myLog(-1," print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+                        version = " "
+                        plugId  = " "
+                        continue
+                plugList.append((pName,pCPU,pID,version,plugId))
+        except  Exception, e:
+            self.myLog(-1," print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
                 
         return plugList
 
@@ -321,15 +325,16 @@ class Plugin(indigo.PluginBase):
 ####-----------------  print device / variable states .. ---------
     def printPluginidNamestoLogfile(self):
 
-        indigo.server.log("starting print plugin names, id, mem cpu  daughter proceesses . . . takes a little time,  using lsof, ps -ef, ps -aux")
-        psaux = subprocess.Popen("/bin/ps aux",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
-        psef  = subprocess.Popen("/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
+        indigo.server.log("starting print plugin names, id, mem cpu  daughter processes . . . takes a little time,  using lsof, ps -ef, ps aux")
+        psaux = subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps aux",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].decode("utf-8").strip(u"\n")
+        psef  = subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].decode("utf-8").strip(u"\n")
         memList ={}
         for m in psaux.split("\n"):
             mm = m.split()
-            try: int(psaux[4])
+            try: int(mm[4])
             except: continue
             memList[mm[1]]= [mm[3],str(int(mm[4])/1024),str(int(mm[5])/1024)] # %mem,virt mem, real mem in MB
+            #indigo.server.log(unicode( memList[mm[1]]))
 
         fileList = self.getOpenFiles()
         plugList = self.getActivePlugins(psef)
@@ -375,7 +380,7 @@ class Plugin(indigo.PluginBase):
     def makepluginDateList(self):
 
             self.taskList =""
-            psef  = subprocess.Popen("/bin/ps -ef ",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
+            psef  = subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps -ef ",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].decode("utf-8").strip(u"\n")
             plugList = self.getActivePlugins(psef)
             tDay = datetime.datetime.now().day
             if self.lastVersionCheck == tDay:
@@ -735,15 +740,7 @@ class Plugin(indigo.PluginBase):
         
         return valuesDict
 
-####-----------------   create list of devcies that have states          ---------
-    def filterPlugin(self,filter="",valuesDict="",typeId="",devId=""):
-        retList=[]
-        for dev in indigo.devices:
-            for state in dev.states.keys():
-                retList.append((dev.id, dev.name))# if we are here we found a state that can be selected
-                break
-        return retList
-    
+
 ######################################################################################
     ####-----------------  event trigger fior cpu of plugin > xx
 ######################################################################################
@@ -751,7 +748,7 @@ class Plugin(indigo.PluginBase):
     def filterPlugin(self,  filter="", valuesDict=None, typeId="", targetId=0):
 
         retList = []
-        psef  = subprocess.Popen("/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
+        psef  = (subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]).decode('utf-8').strip("\n")
         plugList = self.getActivePlugins(psef)
         
         if filter =="new":
@@ -790,28 +787,47 @@ class Plugin(indigo.PluginBase):
 
     ####-----------------  
     def checkPluginCPU(self):
-        if time.time() - self.lastPluginCpuCheck < 300: return 
-        psef  = subprocess.Popen("/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
-        plugList = self.getActivePlugins(psef)
-        for plug in plugList:
-            plugID = plug[4]
-            if plugID not in self.PLUGINSusedForCPUlimts: continue
-            newCPU = plug[1].split(":")
-            if len(newCPU) ==2:
-                cpu = float(newCPU[0])*60 + float(newCPU[1]) 
-            else:
-                cpu =  float(newCPU[1]) 
+        if time.time() - self.lastPluginCpuCheck < 100: return 
+        try:
+            psef  = subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].decode("utf-8").strip("\n")
+            plugList = self.getActivePlugins(psef)
+            for plug in plugList:
+                plugID = plug[4]
+                if plugID not in self.PLUGINSusedForCPUlimts: continue
+                newCPU = plug[1].split(":")
+                if len(newCPU) ==2:
+                    cpu = float(newCPU[0])*60 + float(newCPU[1]) 
+                else:
+                    cpu =  float(newCPU[1]) 
             
-            deltaT    = time.time() - self.PLUGINSusedForCPUlimts[plugID]["lastTime"]
-            factor    = max(0.0001,deltaT/300.)
-            deltaCPU  = (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor
-            self.myLog(1,"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
-            if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
-                self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
-            self.PLUGINSusedForCPUlimts[plugID]["lastTime"] = time.time()
-            self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
-        self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
-        self.lastPluginCpuCheck = time.time()
+                deltaT    = time.time() - self.PLUGINSusedForCPUlimts[plugID]["lastTime"]
+                factor    = max(0.01,deltaT/100.)
+                deltaCPU  = (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor
+                self.myLog(1,"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
+                if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
+                    self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
+                self.PLUGINSusedForCPUlimts[plugID]["lastTime"] = time.time()
+                self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
+
+                # store result in variable CPU_usage_short_plugID
+                ss = plugID.split(".")
+                plugidShort = ""
+                for n in range(2,len(ss)):
+                    if ss[n] in ["com","org","net","perceptiveautomation","indigoplugin","indiPref"]: continue
+                    plugidShort+=ss[n]+"."
+                plugidShort = plugidShort.strip(".").replace(" ","_")
+                if len(plugidShort)< 2:
+                    plugidShort = plugID
+                try:     
+                    var = indigo.variables["CPU_usage_"+plugidShort]
+                    indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.1f"%deltaCPU)
+                except:  
+                    indigo.variable.create("CPU_usage_"+plugidShort,"%.1f"%deltaCPU,"")
+                    
+            self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+            self.lastPluginCpuCheck = time.time()
+        except  Exception, e:
+            self.myLog(-1, "checkPluginCPU error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
         return 
 
 ####-----------------   for menue aded --- lines          ---------
@@ -1287,7 +1303,7 @@ class Plugin(indigo.PluginBase):
         self.printDeviceStates(valuesDict,typeId,devId)
     
 ####-----------------   collect all info and call print 2         ---------
-    def printDeviceStates(self,valuesDict="",typeId="",devId=""):
+    def printDeviceStates(self,valuesDict=[],typeId="",devId=""):
         self.printDeviceStatesDictLast= copy.copy(valuesDict)
         self.pluginPrefs["printDeviceStates"] =self.printDeviceStatesDictLast
         self.printDeviceStatesDictLast= copy.copy(valuesDict)

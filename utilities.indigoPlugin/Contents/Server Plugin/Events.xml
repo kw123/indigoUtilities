@@ -33,8 +33,8 @@
                 <Label>To remove </Label><Title>CLICK</Title> <CallbackMethod>buttonconfirmRemovePluginCALLBACK</CallbackMethod>
             </Field>
 
-            <Field    id="cpuThreshold" type="menu" tooltip="" visibleBindingId="newOrExistingPlugin" visibleBindingValue="new,existing">
-                <Label>trigger if cpu usage over 5 minutes is &gt; xx secs:</Label>
+            <Field    id="cpuThreshold" type="menu" tooltip=" will also create a variable CPU_usage_pluginID where the current CPU is saved" visibleBindingId="newOrExistingPlugin" visibleBindingValue="new,existing">
+                <Label>trigger if cpu usage over 100secs is &gt; xx secs:</Label>
                 <List>
                     <Option value="1"   >1 sec - for testing</Option>
                     <Option value="5"   >5 sec </Option>
