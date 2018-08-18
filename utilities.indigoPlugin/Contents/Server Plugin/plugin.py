@@ -271,39 +271,50 @@ class Plugin(indigo.PluginBase):
             for line in lines:
                 #indigo.server.log(line)
                 if len(line) < 40: continue
-                if line.find("/Indigo") == -1: continue
+                if line.find("ndigo") == -1: continue
                 items = line.split()
                 if len(items) < 7: continue
                 #self.myLog(-1,unicode(items))
                 pCPU    = items[6]
                 pID     = items[1]
-                plugId  = ""
-                version = ""
-                if line.find("MacOS/IndigoPluginHost") > -1 and line.find("indigoPlugin") >-1:
-                    names = line.split(" -f")
-                    pName = names[1].split(".indigoPlugin")[0]
+                pType   = "plugin"
+                plugId  = "0"
+                version = "0"
+                if line.find("MacOS/IndigoPluginHost") > -1:
+                    SPLIT = "-f"
+                    if    " -f" in line: SPLIT = " -f"
+                    elif  " -e" in line: SPLIT = " -e"
+                    else: continue
+                    pName = (line.split(SPLIT)[1]).split(".indigoPlugin")[0]
                     pType ="plugin"
                     try:
                         plugId  = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["CFBundleIdentifier"]
                         version = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["PluginVersion"]
                     except  Exception, e:
-                            if unicode(e).find("No such file or directory") == -1:
-                                self.myLog(-1," print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+                        if unicode(e).find("No such file or directory") > -1:
+                            plugId   = pName
+                            version  = "noVer."
+                        else:
+                            self.myLog(-1," print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
                             continue
                 elif line.find("/Applications/Indigo ") > -1 and line.find(".app/Contents/MacOS/Indigo ") > -1: 
-                    pType = "IndigoClient"
-                    pName = "IndigoClient"
-                    plugId= "IndigoClient"
+                    pType  = "IndigoClient"
+                    pName  = "IndigoClient"
+                    plugId = "IndigoClient"
                     
                 elif line.find("IndigoServer.app/") > -1: 
-                    pType = "IndigoServer"
-                    pName = "IndigoServer"
-                    plugId= "IndigoServer"
+                    pType  = "IndigoServer"
+                    pName  = "IndigoServer"
+                    plugId = "IndigoServer"
                     
                 elif line.find("/IndigoWebServer/") > -1: 
-                    pType = "IndigoWebServer"
-                    pName = "IndigoWebServer"
-                    plugId= "IndigoWebServer"
+                    pType  = "IndigoWebServer"
+                    pName  = "IndigoWebServer"
+                    plugId = "IndigoWebServer"
+                elif line.find(" indigo_history ") > -1: 
+                    pType  = "postgres"
+                    pName  = "postgres"
+                    plugId = "postgres"
                 else:
                     continue
                     
@@ -875,13 +886,16 @@ class Plugin(indigo.PluginBase):
     def checkPluginCPU(self):
         if time.time() - self.lastPluginCpuCheck < 100: return 
         try:
-            psef     = self.getPSEF(grep="/Indigo")
+            psef     = self.getPSEF(grep="ndigo")
             plugList = self.getActivePlugins(psef)
             self.addremovePlugin("IndigoServer")
             self.addremovePlugin("IndigoClient")
             self.addremovePlugin("IndigoWebServer")
+            self.addremovePlugin("postgres")
 
+            totalDelta = 0
             for plug in plugList:
+                ###indigo.server.log(" doing "+ str(plug))
                 plugID = plug[4]
                 if len(plugID) < 3: continue
                 self.addremovePlugin(plugID)
@@ -896,6 +910,7 @@ class Plugin(indigo.PluginBase):
                 deltaT    = time.time() - self.PLUGINSusedForCPUlimts[plugID]["lastTime"]
                 factor    = max(0.01,deltaT/100.)
                 deltaCPU  = max(0, (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor )
+                totalDelta += deltaCPU
                 self.myLog(1,"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
                 if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
                     self.myLog(1,"triggering > threshold for "+plugID )
@@ -904,6 +919,7 @@ class Plugin(indigo.PluginBase):
                 self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
 
                 # store result in variable CPU_usage_short_plugID
+                plugID = plugID.replace(" ","-")
                 ss = plugID.split(".")
                 plugidShort = ""
                 for n in range(2,len(ss)):
@@ -920,6 +936,12 @@ class Plugin(indigo.PluginBase):
                     
                 
             self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+            if self.PLUGINSallCalcCPU:
+                try:     
+                    var = indigo.variables["CPU_usage_AllIndigoAndPlugins"]
+                    indigo.variable.updateValue("CPU_usage_AllIndigoAndPlugins","%.2f"%totalDelta)
+                except:  
+                    indigo.variable.create("CPU_usage_AllIndigoAndPlugins","%.2f"%totalDelta,"")
             self.lastPluginCpuCheck = time.time()
         except  Exception, e:
             self.myLog(-1, "checkPluginCPU error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
