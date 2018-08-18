@@ -7,6 +7,11 @@
     </Field>
 
     <Field
+        id="infoLabeldebug"
+        type="label">
+        <Label>Debugging ... </Label>
+    </Field>
+    <Field
         id="debugLevel"
         type="menu"
         defaultValue="0" >
@@ -21,6 +26,34 @@
 
 
     <Field
+        id="infoLabelLang"
+        type="label">
+        <Label>for language /char encoding, to get your type: "locale" in terminal  
+        should get somethiung like this:   LANG="en_US.utf-8"... </Label>
+    </Field>
+    <Field
+        id="localeLanguage"
+        type="textfield"
+        defaultValue="en_US" >
+        <Label>Locale Language:</Label>
+    </Field>
+
+
+    <Field
+        id="enccodingChar"
+        type="textfield"
+        defaultValue="utf-8" >
+        <Label>character set used:</Label>
+    </Field>
+
+
+    <Field
+        id="infoLabelCPU"
+        type="label">
+        <Label>Enable CPU tracking for Indigo server client, webserver and plugins 
+        measured in  CPUsec per 100sec of 1 CPU (total capacity is x*#ofCPUs)....</Label>
+    </Field>
+    <Field
         id="PLUGINSallCalcCPU"
         type="menu"
         defaultValue="0" >
@@ -28,12 +61,17 @@
             <Option value="0"    >disable</Option>
             <Option value="1"    >enable, will create a variable CPU_used_...</Option>
         </List>
-        <Label>enable CPU tracking for all polugins </Label>
+        <Label>enable CPU tracking for Indigo + plugins [units CPUsec in 100sec] </Label>
     </Field>
 
 
 
 
+    <Field
+        id="infoLabelCPUtemp"
+        type="label">
+        <Label>MAC temperature and fan speed measurements...</Label>
+    </Field>
     <Field
         id="cpuTempFreq"
         type="menu"
@@ -73,6 +111,11 @@
     </Field>
 
 
+    <Field
+        id="infoLabelSQL"
+        type="label">
+        <Label>SQL stuff...</Label>
+    </Field>
     <Field
         id="liteOrPsql"
         type="menu"
@@ -121,6 +164,11 @@
 
 
 
+    <Field
+        id="infoLabelbackupL"
+        type="label">
+        <Label>Backup stuff...</Label>
+    </Field>
     <Field 
         id="noOfBackupCopies"
         type="menu"
