@@ -20,6 +20,19 @@
     </Field>
 
 
+    <Field
+        id="PLUGINSallCalcCPU"
+        type="menu"
+        defaultValue="0" >
+        <List>
+            <Option value="0"    >disable</Option>
+            <Option value="1"    >enable, will create a variable CPU_used_...</Option>
+        </List>
+        <Label>enable CPU tracking for all polugins </Label>
+    </Field>
+
+
+
 
     <Field
         id="cpuTempFreq"

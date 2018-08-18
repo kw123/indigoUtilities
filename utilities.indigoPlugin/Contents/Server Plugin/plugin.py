@@ -85,6 +85,7 @@ class Plugin(indigo.PluginBase):
         self.orderByID			= self.pluginPrefs.get(		"orderByID",	"no")
         self.noOfBackupCopies	= self.pluginPrefs.get(		"noOfBackupCopies",	"2")
         self.maxSQLlength       = self.pluginPrefs.get(		"maxSQLlength",	"200000")
+        self.PLUGINSallCalcCPU  = self.pluginPrefs.get(		"PLUGINSallCalcCPU","0") == "1"
         self.devID 				= 0
         self.varID 				= 0
         self.quitNow			= "" # set to !="" when plugin should exit ie to restart, needed for subscription -> loop model
@@ -179,9 +180,10 @@ class Plugin(indigo.PluginBase):
             valuesDict["maxSQLlength"] = 200000
             self.maxSQLlength = 200000
             
-        self.cpuTempFreq   = valuesDict["cpuTempFreq"]
-        self.cpuTempUnit   = valuesDict["cpuTempUnit"]
-        self.cpuTempFormat = valuesDict["cpuTempFormat"]
+        self.cpuTempFreq        = valuesDict["cpuTempFreq"]
+        self.cpuTempUnit        = valuesDict["cpuTempUnit"]
+        self.cpuTempFormat      = valuesDict["cpuTempFormat"]
+        self.PLUGINSallCalcCPU = valuesDict["PLUGINSallCalcCPU"]=="1"
         
         return True, valuesDict
 
@@ -771,19 +773,22 @@ class Plugin(indigo.PluginBase):
             del self.PLUGINSusedForCPUlimts[plug]
         self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
         return valuesDict
-
     ####-----------------  ---------
-    def buttonConfirmPluginCALLBACK(self, valuesDict=None, typeId="", targetId=0):
+    def buttonConfirmPluginCALLBACK(self, valuesDict=None, typeId="", eventId=0):
         if valuesDict["newOrExistingPlugin"]  == "new":
             plug  = valuesDict["selectNewPlugin"]
         if valuesDict["newOrExistingPlugin"]  == "existing":
             plug  = valuesDict["selectExistingPlugin"]
         if len(plug) < 2: return valuesDict
-
-        self.PLUGINSusedForCPUlimts[plug] = {"evID":targetId, "lastCPU":0, "lastTime":0, "cpuThreshold": float(valuesDict["cpuThreshold"])}
-        
+        self.PLUGINSusedForCPUlimts[plug] = {"evID":eventId, "lastCPU":0, "lastTime":0, "cpuThreshold": float(valuesDict["cpuThreshold"])}
         self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
         return valuesDict
+
+    ####-----------------  ---------
+    def validateEventConfigUi(self, valuesDict=None, typeId="", eventId=0):
+        self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+        return (True, valuesDict)
+        
 
     ####-----------------  
     def checkPluginCPU(self):
@@ -791,8 +796,17 @@ class Plugin(indigo.PluginBase):
         try:
             psef  = subprocess.Popen("export LANG=en_US.utf-8 &&/bin/ps -ef",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].decode("utf-8").strip("\n")
             plugList = self.getActivePlugins(psef)
+            delPLUG = {}
             for plug in plugList:
                 plugID = plug[4]
+                if self.PLUGINSallCalcCPU: 
+                    if plugID not in self.PLUGINSusedForCPUlimts: 
+                        self.PLUGINSusedForCPUlimts[plugID] = {"evID":0, "lastCPU":0, "lastTime":0, "cpuThreshold": 99999999999}
+                else:
+                    if plugID in self.PLUGINSusedForCPUlimts:
+                        if self.PLUGINSusedForCPUlimts[plugID]["evID"] == 0: 
+                            delPLUG[plugID]= True
+                
                 if plugID not in self.PLUGINSusedForCPUlimts: continue
                 newCPU = plug[1].split(":")
                 if len(newCPU) ==2:
@@ -802,9 +816,10 @@ class Plugin(indigo.PluginBase):
             
                 deltaT    = time.time() - self.PLUGINSusedForCPUlimts[plugID]["lastTime"]
                 factor    = max(0.01,deltaT/100.)
-                deltaCPU  = (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor
+                deltaCPU  = max(0, (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor )
                 self.myLog(1,"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
                 if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
+                    self.myLog(1,"triggering > threshold for "+plugID )
                     self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
                 self.PLUGINSusedForCPUlimts[plugID]["lastTime"] = time.time()
                 self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
@@ -824,6 +839,9 @@ class Plugin(indigo.PluginBase):
                 except:  
                     indigo.variable.create("CPU_usage_"+plugidShort,"%.1f"%deltaCPU,"")
                     
+            for plug in delPLUG:
+                del self.PLUGINSusedForCPUlimts[plug]
+                
             self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
             self.lastPluginCpuCheck = time.time()
         except  Exception, e:
