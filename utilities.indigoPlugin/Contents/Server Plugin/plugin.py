@@ -264,7 +264,7 @@ class Plugin(indigo.PluginBase):
 
     def getActivePlugins(self,psef):
 
-        plugList= []
+        plugList= {}
         try:
             lines = psef.strip(u"\n").split(u"\n")
             version =" "
@@ -318,7 +318,7 @@ class Plugin(indigo.PluginBase):
                 else:
                     continue
                     
-                plugList.append((pName,pCPU,pID,version,plugId,pType))
+                plugList[plugId]= [pName,pCPU,pID,version,plugId,pType]
         except  Exception, e:
             self.myLog(-1,"getActivePlugins  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
                 
@@ -375,7 +375,8 @@ class Plugin(indigo.PluginBase):
         plugList = self.getActivePlugins(psef)
         
         out=["\n    PID    CPU-total  Mem-% -Virt -Real  version       pluginName ------------------------  .. + sub processes and non std open files \n"]
-        for item in  plugList:
+        for plID in  plugList:
+            item = plugList[plID]
             try:
                 if item[5] !="plugin": continue
                 pName   = item[0]
@@ -425,7 +426,8 @@ class Plugin(indigo.PluginBase):
             self.lastVersionCheck = tDay
 
             self.myLog(255,"Plugin name -------------------    installed Version   StoreVers ")
-            for item in plugList:
+            for plID in  plugList:
+                item = plugList[plID]
                 if item[5] !="plugin": continue
                 pName     = item[0]
                 exVersion = item[3]
@@ -789,13 +791,15 @@ class Plugin(indigo.PluginBase):
         plugList = self.getActivePlugins(psef)
         
         if filter =="new":
-            for plug in plugList:
+            for plID in  plugList:
+                plug = plugList[plID]
                 if plug[5] !="plugin": continue
                 if plug[4] in self.PLUGINSusedForCPUlimts: continue
                 retList.append((plug[4],plug[0]) )
             retList = sorted( retList, key=lambda x:(x[1]) )
         if filter =="existing":
-            for plug in plugList:
+            for plID in  plugList:
+                plug = plugList[plID]
                 if plug[5] !="plugin": continue
                 if plug[4] not in self.PLUGINSusedForCPUlimts: continue
                 retList.append((plug[4],plug[0]) )
@@ -872,10 +876,16 @@ class Plugin(indigo.PluginBase):
         return ret
 
     ####-----------------  
-    def addremovePlugin(self,plID):
+    def addremovePlugin(self,plID,plugList):
             if self.PLUGINSallCalcCPU:
                 if plID not in self.PLUGINSusedForCPUlimts:
-                        self.PLUGINSusedForCPUlimts[plID] = {"evID":0, "lastCPU":0, "lastTime":0, "cpuThreshold": 99999999999}
+                    if plID in plugList:
+                        self.PLUGINSusedForCPUlimts[plID] = {"evID":0, "lastCPU":0, "lastTime":0, "cpuThreshold": 99999999999, "plugData":plugList[plID]}
+                if plID in self.PLUGINSusedForCPUlimts:
+                    if plID in plugList:
+                        if "plugData" not in self.PLUGINSusedForCPUlimts:
+                            self.PLUGINSusedForCPUlimts[plID]["plugData"]= plugList[plID]
+
             else:
                 if plID  in self.PLUGINSusedForCPUlimts:
                     if self.PLUGINSusedForCPUlimts[plID]["evID"] == "0":
@@ -888,18 +898,26 @@ class Plugin(indigo.PluginBase):
         try:
             psef     = self.getPSEF(grep="ndigo")
             plugList = self.getActivePlugins(psef)
-            self.addremovePlugin("IndigoServer")
-            self.addremovePlugin("IndigoClient")
-            self.addremovePlugin("IndigoWebServer")
-            self.addremovePlugin("postgres")
+            self.addremovePlugin("IndigoServer",plugList)
+            self.addremovePlugin("IndigoClient",plugList)
+            self.addremovePlugin("IndigoWebServer",plugList)
+            self.addremovePlugin("postgres",plugList)
 
+
+            plugListALL = copy.copy(plugList)
+            for id in self.PLUGINSusedForCPUlimts:
+                if id in plugList: continue
+                self.PLUGINSusedForCPUlimts[id]["lastCPU"] = 0
+                if "plugData" not in self.PLUGINSusedForCPUlimts[id]: continue
+                plugListALL[id]                            = self.PLUGINSusedForCPUlimts[id]["plugData"]
+                plugListALL[id][1]                         = "0:0.0"
             totalDelta = 0
-            for plug in plugList:
+            for plID in  plugListALL:
+                plug = plugListALL[plID]
                 ###indigo.server.log(" doing "+ str(plug))
                 plugID = plug[4]
                 if len(plugID) < 3: continue
-                self.addremovePlugin(plugID)
-                
+                self.addremovePlugin(plugID,plugListALL)
                 if plugID not in self.PLUGINSusedForCPUlimts: continue
                 newCPU = plug[1].split(":")
                 if len(newCPU) ==2:
