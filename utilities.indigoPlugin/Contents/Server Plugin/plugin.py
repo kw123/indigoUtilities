@@ -311,7 +311,7 @@ class Plugin(indigo.PluginBase):
                     pType  = "IndigoWebServer"
                     pName  = "IndigoWebServer"
                     plugId = "IndigoWebServer"
-                elif line.find(" indigo_history ") > -1: 
+                elif line.find("/Postgres") > -1: 
                     pType  = "postgres"
                     pName  = "postgres"
                     plugId = "postgres"
@@ -970,21 +970,12 @@ class Plugin(indigo.PluginBase):
                 plugID = plugID.replace(" ","-")
                 ss = plugID.split(".")
                 plugidShort = ""
-                for n in range(2,len(ss)):
-                    if ss[n] in ["com","org","net","perceptiveautomation","indigoplugin","indiPref"]: continue
-                    plugidShort+=ss[n]+"."
-                plugidShort = plugidShort.strip(".").replace(" ","_")
-                if len(plugidShort)< 2:
-                    plugidShort = plugID
-                try:     
-                    var = indigo.variables["CPU_usage_"+plugidShort]
-                    indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.2f"%deltaCPU)
-                except:  
-                    indigo.variable.create("CPU_usage_"+plugidShort,"%.2f"%deltaCPU,"")
+
+
 
                 deltaCPUsub = 0
                 update = False
-                if len(plug["subprocessesPid"]) > 0 and plug["pType"] == "plugin":
+                if len(plug["subprocessesPid"]) > 0 and plug["pType"] in ["plugin","postgres"]:
                     update= True
                     for subPLid in plug["subprocessesPid"]:
                         cpu = self.calcCPU(plug["subprocessesPid"][subPLid]["cpu"])
@@ -994,12 +985,26 @@ class Plugin(indigo.PluginBase):
                         self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"][subPLid] = cpu
                 deltaCPUsub  = max(0, deltaCPUsub / factor )
                     
+                #try:  ## add cpu to main    
+                #    var = indigo.variables["CPU_usage_"+plugidShort+"_sub"]
+                #    indigo.variable.updateValue("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub)
+                #except: 
+                #    if update: 
+                #        indigo.variable.create("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub,"")
+
+
+
+                for n in range(2,len(ss)):
+                    if ss[n] in ["com","org","net","perceptiveautomation","indigoplugin","indiPref"]: continue
+                    plugidShort+=ss[n]+"."
+                plugidShort = plugidShort.strip(".").replace(" ","_")
+                if len(plugidShort)< 2:
+                    plugidShort = plugID
                 try:     
-                    var = indigo.variables["CPU_usage_"+plugidShort+"_sub"]
-                    indigo.variable.updateValue("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub)
-                except: 
-                    if update: 
-                        indigo.variable.create("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub,"")
+                    var = indigo.variables["CPU_usage_"+plugidShort]
+                    indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.2f"%(deltaCPU+deltaCPUsub))
+                except:  
+                    indigo.variable.create("CPU_usage_"+plugidShort,"%.2f"%(deltaCPU+deltaCPUsub),"")
 
                 totalDelta +=deltaCPUsub
                     
