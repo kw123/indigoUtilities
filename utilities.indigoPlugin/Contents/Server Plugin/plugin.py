@@ -271,7 +271,7 @@ class Plugin(indigo.PluginBase):
             for line in lines:
                 #indigo.server.log(line)
                 if len(line) < 40: continue
-                if line.find("ndigo") == -1: continue
+                #if line.find("ndigo") == -1: continue
                 items = line.split()
                 if len(items) < 7: continue
                 #self.myLog(-1,unicode(items))
@@ -315,10 +315,33 @@ class Plugin(indigo.PluginBase):
                     pType  = "postgres"
                     pName  = "postgres"
                     plugId = "postgres"
+                elif line.find("VBox") > -1: 
+                    pType  = "VBox"
+                    pName  = "VBox"
+                    plugId = "VBox"
+                elif line.find("fing.bin") > -1: 
+                    pType  = "fing"
+                    pName  = "fing"
+                    plugId = "fing"
                 else:
                     continue
                     
-                plugList[plugId]= [pName,pCPU,pID,version,plugId,pType]
+                        
+                plugList[plugId]= { "plugName":pName,"cpu":pCPU,"pid":pID,"version":version,"pType":pType,"subprocessesPid":{} }
+                ## now do subprocesses
+                ## for fingscan it is only the shell that calls fing which has a different pid parent ie 1 = root  
+                if pName.find("fingscan") == -1:
+                    nSub =0
+                    for subLine in lines:
+                        subp = subLine.split()
+                        if len(subp) < 8: continue
+                        if subp[2] == pID:
+                            nSub +=1
+                            if subp[1] not in plugList[plugId]["subprocessesPid"]:   plugList[plugId]["subprocessesPid"][subp[1]] = {}
+                            plugList[plugId]["subprocessesPid"][subp[1]] =  {"cpu":subp[6], "name":" ".join(subp[7:])}
+
+                #indigo.server.log (plugId+"  :" +unicode(plugList[plugId]))
+                                
         except  Exception, e:
             self.myLog(-1,"getActivePlugins  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
                 
@@ -362,7 +385,7 @@ class Plugin(indigo.PluginBase):
 
         indigo.server.log("starting print plugin names, id, mem cpu  daughter processes . . . takes a little time,  using lsof, ps -ef, ps aux")
         psaux  = self.getPSAUX()
-        psef  = self.getPSEF()
+        psef   = self.getPSEF(grep="ndigo")
         memList ={}
         for m in psaux.split("\n"):
             mm = m.split()
@@ -378,11 +401,11 @@ class Plugin(indigo.PluginBase):
         for plID in  plugList:
             item = plugList[plID]
             try:
-                if item[5] !="plugin": continue
-                pName   = item[0]
-                pCPU    = item[1]
-                pID     = item[2]
-                version = item[3]
+                if item["pType"] !="plugin": continue
+                pName   = item["plugName"]
+                pCPU    = item["cpu"]
+                pID     = item["pid"]
+                version = item["version"]
                 if pID in memList:    mem = memList[pID][0].rjust(6)+memList[pID][1].rjust(6)+memList[pID][2].rjust(6)
                 else:                 mem = " ".rjust(18)
                 out.append(pID.rjust(7)+"  "+pCPU.rjust(11)+" "+mem+"  "+version.ljust(10)+"   "+ pName +"\n")
@@ -391,17 +414,13 @@ class Plugin(indigo.PluginBase):
                     if (" "+pID+" ") not in line: continue
                     ret2.append(line)
                 if ret2 == []: continue
-                for line2 in ret2:
-                    items2 = line2.split()
-                    if len(items2) < 7: continue
-                    if items2[1] == pID: continue
-                    dPID = items2[1]
-                    dCPU = items2[6]
-                    d=""
-                    for ii in range(7,len(items2)):
-                        d +=  items2[ii]+" "
-                    if len(d) < 5: continue
-                    doughterProcess= "             SubProcess: "+d.replace("/Library/Application Support/Perceptive Automation/Indigo"," ...")
+                
+                for dPID in item["subprocessesPid"]:
+                    items2 = item["subprocessesPid"][dPID]
+                    name = items2["name"]
+                    if len(name) < 10: continue
+                    dCPU = items2["cpu"]
+                    doughterProcess= "             SubProcess: "+name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ...")
                     if pID in memList:    mem = memList[pID][0].rjust(6)+memList[pID][1].rjust(6)+memList[pID][2].rjust(6)
                     else:                 mem = " ".rjust(18)
                     out.append( dPID.rjust(7)+"  "+dCPU.rjust(11)+" "+mem+"   "+ doughterProcess+"\n")
@@ -414,10 +433,11 @@ class Plugin(indigo.PluginBase):
 
 
 
+####-----------------  print device / variable states .. ---------
     def makepluginDateList(self):
 
             self.taskList =""
-            psef  = self.getPSEF()
+            psef  = self.getPSEF(grep="ndigo")
             plugList = self.getActivePlugins(psef)
             tDay = datetime.datetime.now().day
             if self.lastVersionCheck == tDay:
@@ -428,12 +448,14 @@ class Plugin(indigo.PluginBase):
             self.myLog(255,"Plugin name -------------------    installed Version   StoreVers ")
             for plID in  plugList:
                 item = plugList[plID]
-                if item[5] !="plugin": continue
-                pName     = item[0]
-                exVersion = item[3]
-                plugId    = item[4]
-                version =   VS.versionCheck(plugId,"0.0.0",indigo,0,0, printToLog="no",force =True)
-                self.myLog(255,pName.ljust(35)+str(exVersion).ljust(20)+str(version))
+                if item["pType"] !="plugin": continue
+                pName   = item["plugName"]
+                pID     = item["pid"]
+                version = item["version"]
+                exVersion ="not available" 
+                if item["version"].find("no") ==-1:
+                    exVersion =   VS.versionCheck(plID,"0.0.0",indigo,0,0, printToLog="no",force =True)
+                self.myLog(255,pName.ljust(35)+str(version).ljust(20)+str(exVersion))
                 time.sleep(1.5)
             self.myLog(255,"Plugin name -------------------    END")
 
@@ -787,24 +809,27 @@ class Plugin(indigo.PluginBase):
     def filterPlugin(self,  filter="", valuesDict=None, typeId="", targetId=0):
 
         retList = []
-        psef  = self.getPSEF()
+        psef  = self.getPSEF(grep="ndigo")
         plugList = self.getActivePlugins(psef)
         
         if filter =="new":
             for plID in  plugList:
                 plug = plugList[plID]
-                if plug[5] !="plugin": continue
-                if plug[4] in self.PLUGINSusedForCPUlimts: continue
-                retList.append((plug[4],plug[0]) )
+                if plug["pType"] !="plugin": continue
+                pName   = plug["plugName"]
+                if plID in self.PLUGINSusedForCPUlimts: continue
+                retList.append((plID,pName) )
             retList = sorted( retList, key=lambda x:(x[1]) )
         if filter =="existing":
             for plID in  plugList:
                 plug = plugList[plID]
-                if plug[5] !="plugin": continue
-                if plug[4] not in self.PLUGINSusedForCPUlimts: continue
-                retList.append((plug[4],plug[0]) )
+                pName   = plug["plugName"]
+                if plug["pType"] !="plugin": continue
+                if plID not in self.PLUGINSusedForCPUlimts: continue
+                retList.append((plID,pName) )
             retList = sorted( retList, key=lambda x:(x[1]) )
         return retList
+
 
     ####-----------------  ---------
     def buttonconfirmRemovePluginCALLBACK(self, valuesDict=None, typeId="", targetId=0):
@@ -822,7 +847,7 @@ class Plugin(indigo.PluginBase):
             plug  = valuesDict["selectExistingPlugin"]
         if len(plug) < 2: return valuesDict
         if plug not in self.PLUGINSusedForCPUlimts:
-            self.PLUGINSusedForCPUlimts[plug] = {"evID":eventId, "lastCPU":0, "lastTime":0, "cpuThreshold": float(valuesDict["cpuThreshold"])}
+            self.PLUGINSusedForCPUlimts[plug] = {"evID":eventId, "lastCPU":0, "lastTime":0, "cpuThreshold": float(valuesDict["cpuThreshold"]), "lastCPUsub":{} }
         self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
         return valuesDict
 
@@ -876,54 +901,58 @@ class Plugin(indigo.PluginBase):
         return ret
 
     ####-----------------  
-    def addremovePlugin(self,plID,plugList):
+    def addremovePlugin(self,plugID,plugList):
             if self.PLUGINSallCalcCPU:
-                if plID not in self.PLUGINSusedForCPUlimts:
-                    if plID in plugList:
-                        self.PLUGINSusedForCPUlimts[plID] = {"evID":0, "lastCPU":0, "lastTime":0, "cpuThreshold": 99999999999, "plugData":plugList[plID]}
-                if plID in self.PLUGINSusedForCPUlimts:
-                    if plID in plugList:
+                if plugID not in self.PLUGINSusedForCPUlimts:
+                    if plugID in plugList:
+                        self.PLUGINSusedForCPUlimts[plugID] = {"evID":0, "lastCPU":0, "lastCPUsub":{}, "lastTime":0, "cpuThreshold": 99999999999, "plugData":plugList[plugID]}
+                if plugID in self.PLUGINSusedForCPUlimts:
+                    if plugID in plugList:
                         if "plugData" not in self.PLUGINSusedForCPUlimts:
-                            self.PLUGINSusedForCPUlimts[plID]["plugData"]= plugList[plID]
+                            self.PLUGINSusedForCPUlimts[plugID]["plugData"]= plugList[plugID]
+                        if "lastCPUsub" not in self.PLUGINSusedForCPUlimts[plugID]:
+                            self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"]= {}
 
             else:
-                if plID  in self.PLUGINSusedForCPUlimts:
-                    if self.PLUGINSusedForCPUlimts[plID]["evID"] == "0":
-                        del self.PLUGINSusedForCPUlimts[plID] 
+                if plugID  in self.PLUGINSusedForCPUlimts:
+                    if self.PLUGINSusedForCPUlimts[plugID]["evID"] == "0":
+                        del self.PLUGINSusedForCPUlimts[plugID] 
 
     
     ####-----------------  
     def checkPluginCPU(self):
         if time.time() - self.lastPluginCpuCheck < 100: return 
         try:
-            psef     = self.getPSEF(grep="ndigo")
+            psef     = self.getPSEF()
             plugList = self.getActivePlugins(psef)
             self.addremovePlugin("IndigoServer",plugList)
             self.addremovePlugin("IndigoClient",plugList)
             self.addremovePlugin("IndigoWebServer",plugList)
             self.addremovePlugin("postgres",plugList)
+            self.addremovePlugin("VBox",plugList)
+            self.addremovePlugin("fing",plugList)
 
 
             plugListALL = copy.copy(plugList)
-            for id in self.PLUGINSusedForCPUlimts:
-                if id in plugList: continue
-                self.PLUGINSusedForCPUlimts[id]["lastCPU"] = 0
-                if "plugData" not in self.PLUGINSusedForCPUlimts[id]: continue
-                plugListALL[id]                            = self.PLUGINSusedForCPUlimts[id]["plugData"]
-                plugListALL[id][1]                         = "0:0.0"
+            for plugID in self.PLUGINSusedForCPUlimts:
+                if plugID in plugList: 
+                    if "plugData" in self.PLUGINSusedForCPUlimts[plugID]: 
+                        if "cpu" not in self.PLUGINSusedForCPUlimts[plugID]["plugData"]:
+                            self.PLUGINSusedForCPUlimts[plugID]["plugData"] = plugList[plugID]
+                else:
+                    self.PLUGINSusedForCPUlimts[plugID]["lastCPU"] = 0
+                    if "plugData" not in self.PLUGINSusedForCPUlimts[plugID]: continue
+                    plugListALL[plugID]                            = self.PLUGINSusedForCPUlimts[plugID]["plugData"]
+                    plugListALL[plugID]["cpu"]                     = "0:0.0"
+
             totalDelta = 0
-            for plID in  plugListALL:
-                plug = plugListALL[plID]
+            for plugID in  plugListALL:
+                plug = plugListALL[plugID]
                 ###indigo.server.log(" doing "+ str(plug))
-                plugID = plug[4]
                 if len(plugID) < 3: continue
                 self.addremovePlugin(plugID,plugListALL)
                 if plugID not in self.PLUGINSusedForCPUlimts: continue
-                newCPU = plug[1].split(":")
-                if len(newCPU) ==2:
-                    cpu = float(newCPU[0])*60 + float(newCPU[1]) 
-                else:
-                    cpu =  float(newCPU[1]) 
+                cpu = self.calcCPU(plug["cpu"])
             
                 deltaT    = time.time() - self.PLUGINSusedForCPUlimts[plugID]["lastTime"]
                 factor    = max(0.01,deltaT/100.)
@@ -936,6 +965,7 @@ class Plugin(indigo.PluginBase):
                 self.PLUGINSusedForCPUlimts[plugID]["lastTime"] = time.time()
                 self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
 
+                    
                 # store result in variable CPU_usage_short_plugID
                 plugID = plugID.replace(" ","-")
                 ss = plugID.split(".")
@@ -951,6 +981,27 @@ class Plugin(indigo.PluginBase):
                     indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.2f"%deltaCPU)
                 except:  
                     indigo.variable.create("CPU_usage_"+plugidShort,"%.2f"%deltaCPU,"")
+
+                deltaCPUsub = 0
+                update = False
+                if len(plug["subprocessesPid"]) > 0 and plug["pType"] == "plugin":
+                    update= True
+                    for subPLid in plug["subprocessesPid"]:
+                        cpu = self.calcCPU(plug["subprocessesPid"][subPLid]["cpu"])
+                        if subPLid not in self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"]:
+                            self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"][subPLid] = cpu
+                        deltaCPUsub += cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"][subPLid]
+                        self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"][subPLid] = cpu
+                deltaCPUsub  = max(0, deltaCPUsub / factor )
+                    
+                try:     
+                    var = indigo.variables["CPU_usage_"+plugidShort+"_sub"]
+                    indigo.variable.updateValue("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub)
+                except: 
+                    if update: 
+                        indigo.variable.create("CPU_usage_"+plugidShort+"_sub","%.2f"%deltaCPUsub,"")
+
+                totalDelta +=deltaCPUsub
                     
                 
             self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
@@ -965,6 +1016,16 @@ class Plugin(indigo.PluginBase):
             self.myLog(-1, "checkPluginCPU error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
         return 
 
+
+####-----------------   for menue aded --- lines          ---------
+    def calcCPU(self, cpu):
+        newCPU = cpu.split(":")
+        if len(newCPU) ==2:
+            cpu = float(newCPU[0])*60 + float(newCPU[1]) 
+        else:
+            cpu =  float(newCPU[1])
+        return cpu
+     
 ####-----------------   for menue aded --- lines          ---------
     def dummyCALLBACK(self):
         
