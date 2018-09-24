@@ -31,16 +31,19 @@ def getIndigoPath(myPath):
                  
         found=False
         indigoVersion = 0
-        for indi in range(5,100):  # we are optimistic for the future of indigo, starting with V5
-            if found:
-                if os.path.isdir("/Library/Application Support/Perceptive Automation/Indigo "+str(indi)): continue
+        if os.path.isdir(indigoPath): found = True
+        if not found:
+            for indi in range(5,100):  # we are optimistic for the future of indigo, starting with V5
+                if found:
+                    if os.path.isdir("/Library/Application Support/Perceptive Automation/Indigo "+str(indi)): continue
+                    else:
+                        indigoVersion = indi-1
+                        break
                 else:
-                    indigoVersion = indi-1
-                    break
-            else:
-                if os.path.isdir("/Library/Application Support/Perceptive Automation/Indigo "+str(indi)): found = True
+                    if os.path.isdir("/Library/Application Support/Perceptive Automation/Indigo "+str(indi)): found = True
 
-        indigoPath	=	"/Library/Application Support/Perceptive Automation/Indigo "+str(indigoVersion)+"/"
+            indigoPath	=	"/Library/Application Support/Perceptive Automation/Indigo "+str(indigoVersion)+"/"
+
 
 ####----------------- doStepRename ---------
 def doStepCopy(inFile, outFile):
