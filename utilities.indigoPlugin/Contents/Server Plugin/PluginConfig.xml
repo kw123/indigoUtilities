@@ -6,29 +6,29 @@
         <Label>utilities Plugin                          Developed by Karl Wachs</Label>
     </Field>
 
-    <Field
-        id="infoLabeldebug"
-        type="label">
-        <Label>Debugging ... </Label>
-    </Field>
-    <Field
-        id="debugLevel"
-        type="menu"
-        defaultValue="0" >
+    <Field id="infoLabel226" type="label"> <Label>== Debug:... </Label>  </Field>
+
+    <Field    id="debugLogic"       type="checkbox"  defaultValue="false"   > <Label>... (1) Logic:</Label>  </Field>
+    <Field    id="debugSQL"         type="checkbox"  defaultValue="false"   > <Label>... (2) logMessages:</Label>  </Field>
+    <Field    id="debugall"         type="checkbox"  defaultValue="false"   > <Label>... (20) all of the above = everything:</Label>  </Field>
+    <Field    id="logFileActive2"   type="menu"      defaultValue="standard" > <Label> send logs to ..:</Label>
         <List>
-            <Option value="0"    >no debug logging</Option>
-            <Option value="1"    >logic</Option>
-            <Option value="2"    >SQL </Option>
-            <Option value="255"  >all </Option>
+            <Option value="standard" > no special utilities logfile, std indigo logfile</Option>
+            <Option value="user"     > ~/indigo/utilities/plugin.log                    </Option>
+            <Option value="indigo"   > .. Perceptive Automation/Indigo x/Logs/com.karlwachs.utilities/plugin.log </Option>
         </List>
-        <Label>debug Enable for: </Label>
+    </Field>
+
+    <Field id="infoLabel227" type="label"> <Label>.                     for DETAILED time tracking set indigo variable "enableTimeTracking_utilities"</Label>  </Field>
+    <Field    id="do_cProfile" type="textfield"  defaultValue="on/off/print"  readonly="yes"     > 
+        <Label>... enable or stop or  print intermediate results use on/off/print:</Label>  
     </Field>
 
 
     <Field
         id="infoLabelLang"
         type="label">
-        <Label>for language /char encoding, to get your type: "locale" in terminal  
+        <Label>== For language /char encoding, to get your type: "locale" in terminal  
         should get somethiung like this:   LANG="en_US.utf-8"... </Label>
     </Field>
     <Field
@@ -50,7 +50,7 @@
     <Field
         id="infoLabelCPU"
         type="label">
-        <Label>Enable CPU tracking for Indigo server client, webserver and plugins 
+        <Label>== Enable CPU tracking for Indigo server client, webserver and plugins 
         measured in  CPUsec per 100sec of 1 CPU (total capacity is x*#ofCPUs)....</Label>
     </Field>
     <Field
@@ -70,7 +70,7 @@
     <Field
         id="infoLabelCPUtemp"
         type="label">
-        <Label>MAC temperature and fan speed measurements...</Label>
+        <Label>== MAC temperature and fan speed measurements...</Label>
     </Field>
     <Field
         id="cpuTempFreq"
@@ -114,7 +114,7 @@
     <Field
         id="infoLabelSQL"
         type="label">
-        <Label>SQL stuff...</Label>
+        <Label>== SQL stuff...</Label>
     </Field>
     <Field
         id="liteOrPsql"
@@ -159,7 +159,7 @@
             <Option value="2000000"  > 2,000,000</Option>
             <Option value="10000000000"  > unlimited</Option>
         </List>
-        <Label>max number of bytes in sql delete statement for squeeze-delete duplicate records (SQLITE has lower limit)</Label>
+        <Label>max # bytes in sql del statmnt for squeeze-del dupl. recs (SQLITE has lower limit)</Label>
     </Field>
 
 
@@ -167,7 +167,7 @@
     <Field
         id="infoLabelbackupL"
         type="label">
-        <Label>Backup stuff...</Label>
+        <Label>== Backup stuff...</Label>
     </Field>
     <Field 
         id="noOfBackupCopies"

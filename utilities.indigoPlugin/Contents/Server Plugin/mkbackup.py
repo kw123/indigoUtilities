@@ -576,7 +576,7 @@ except:
 userName = pwd.getpwuid( os.getuid() )[ 0 ]
 MAChome  = os.path.expanduser(u"~")
 
-utilPath = MAChome+"/indigo/indigoUtilities/"
+utilPath = MAChome+"/indigo/Utilities/"
 
 if os.path.isfile(utilPath+"backup.log"):
     if os.path.getsize(utilPath+"backup.log")> 1000000:
