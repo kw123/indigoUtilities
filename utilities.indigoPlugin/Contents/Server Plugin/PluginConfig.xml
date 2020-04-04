@@ -133,8 +133,28 @@
         id="liteOrPsqlString"
         type="textfield"
         defaultValue="/Library/PostgreSQL/bin/psql indigo_history postgres ">
-        <Label>postgre command string </Label>
+        <Label>postgres command string </Label>
     </Field>
+    
+    <Field
+        visibleBindingId="liteOrPsql"
+        visibleBindingValue="psql"
+        id="postgresUserId"
+        type="textfield"
+        defaultValue="postgres">
+        <Label>postgres userid</Label>
+    </Field>
+    
+    <Field
+        visibleBindingId="liteOrPsql"
+        visibleBindingValue="psql"
+        id="postgresPassword"
+        type="textfield"
+		secure="true"
+        defaultValue="">
+        <Label>postgres password (leave blank if not set)</Label>
+    </Field>
+
     <Field
         id="orderByID"
         type="menu"

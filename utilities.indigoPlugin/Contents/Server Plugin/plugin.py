@@ -94,6 +94,12 @@ class Plugin(indigo.PluginBase):
 		self.debugLevel					= int(self.pluginPrefs.get(	"debugLevel",		255))
 		self.liteOrPsql					= self.pluginPrefs.get(		"liteOrPsql",		"sqlite")
 		self.liteOrPsqlString			= self.pluginPrefs.get(		"liteOrPsqlString",	"/Library/PostgreSQL/bin/psql indigo_history postgres ")
+		self.postgresUserId				= self.pluginPrefs.get(		"postgresUserId",	"postgres")
+		self.postgresPassword			= self.pluginPrefs.get(		"postgresPassword",	"")
+		if self.postgresPassword != "" and self.liteOrPsql.find("psql") >-1: 
+			self.postgresPasscode 		= "PGPASSWORD="+self.postgresPassword +" "
+		else: self.postgresPasscode 	= ""
+
 		self.orderByID					= self.pluginPrefs.get(		"orderByID",	"no")
 		self.noOfBackupCopies			= self.pluginPrefs.get(		"noOfBackupCopies",	"2")
 		self.maxSQLlength       		= self.pluginPrefs.get(		"maxSQLlength",	"200000")
@@ -200,6 +206,11 @@ class Plugin(indigo.PluginBase):
 		self.enccodingChar      = valuesDict[u"enccodingChar"]
 		self.liteOrPsql			= valuesDict["liteOrPsql"]
 		self.liteOrPsqlString	= valuesDict["liteOrPsqlString"]
+		self.postgresUserId		= valuesDict["postgresUserId"]
+		self.postgresPassword	= valuesDict["postgresPassword"]
+		if self.postgresPassword != "" and self.liteOrPsql.find("psql") >-1: 
+			self.postgresPasscode 		= "PGPASSWORD="+self.postgresPassword +" "
+		else: self.postgresPasscode 	= ""
 		self.orderByID			= valuesDict["orderByID"]
 		self.noOfBackupCopies	= valuesDict["noOfBackupCopies"]
 		try:
@@ -221,7 +232,7 @@ class Plugin(indigo.PluginBase):
 		if   self.logFileActive =="standard":	self.logFile = ""
 		elif self.logFileActive =="indigo":		self.logFile = self.indigoPath.split("Plugins/")[0]+"Logs/"+self.pluginId+"/plugin.log"
 		else:									self.logFile = self.indigoConfigDir +"plugin.log"
-		self.ML.myLogSet(debugLevel = self.debugLevel ,logFileActive=self.logFileActive, logFile = self.logFile)
+		self.ML.myLogSet(debugLevel = self.debugLevel ,logFileActive=self.logFileActive, logFile = self.logFile, pluginSelf=self)
 
 
 ####-----------------  print dev var names and id's ---------
@@ -761,8 +772,9 @@ class Plugin(indigo.PluginBase):
 			os.remove(self.userIndigoPluginDir+"postgresBackup.zip-1")
 		if os.path.isfile(self.userIndigoPluginDir+"postgresBackup.zip"):
 			os.system("mv "+self.userIndigoPluginDir+"postgresBackup.zip  "+self.userIndigoPluginDir+"postgresBackup.zip-1")
-			
-		commandLineForDump = self.liteOrPsqlString.replace("psql","pg_dump")
+
+		commandLineForDump = self.postgresPasscode + self.liteOrPsqlString.replace("psql","pg_dump")
+		if self.postgresUserId != "" and self.postgresUserId !="postgres": commandLineForDump = commandLineForDump.replace(" postgres "," "+self.postgresUserId+" ")
 		
 		# add zip, doing dump and zip together eats too much CPU, need to do it in 2 steps , then remove temp file  ( dump && gzip && rm ... )
 		cmd= commandLineForDump+"  > "+  self.userIndigoPluginDir+"postgresBackup.dmp  &&  gzip "+ self.userIndigoPluginDir+"postgresBackup.dmp  > " + self.userIndigoPluginDir+"postgresBackup.zip  &&  rm "+ self.userIndigoPluginDir+"postgresBackup.dmp  &"
@@ -1236,6 +1248,7 @@ class Plugin(indigo.PluginBase):
 				cmd=    "/usr/bin/sqlite3  -separator \" \" '"+self.indigoPath+ "logs/indigo_history.sqlite' \"SELECT id,strftime('%Y%m%D%H%M%S',ts,'localtime') FROM "+table+orderby+";\"\n"
 			else:    
 				cmd= self.liteOrPsqlString+ " -t -A -F ' ' -c \"SELECT id, to_char(ts,'YYYYmmddHH24MIss') FROM "+table+orderby+";\"\n"
+				if self.postgresUserId != "" and self.postgresUserId != "postgres": cmd = cmd.replace(" postgres "," "+self.postgresUserId+" ")
 
 			#self.ML.myLog( text=cmd)
 			ret= subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
@@ -1265,7 +1278,7 @@ class Plugin(indigo.PluginBase):
 			if self.liteOrPsql =="sqlite": 
 					sqlDeleteCommands=    "/usr/bin/sqlite3 '"+self.indigoPath+ "logs/indigo_history.sqlite' "
 			else:    
-					sqlDeleteCommands= self.liteOrPsqlString+ "  -c "
+					sqlDeleteCommands= self.postgresPasscode + self.liteOrPsqlString+ "  -c "
 					
 			sqlDeleteCommands+="\"DELETE FROM "+table+ " WHERE id < " +str(firstIDtoKeep)+";\""
 			if self.ML.decideMyLog(loglevel): self.ML.myLog( text="cmd= "+ sqlDeleteCommands)
@@ -1360,6 +1373,11 @@ class Plugin(indigo.PluginBase):
 					cmd=    "/usr/bin/sqlite3  -separator \" \" '"+self.indigoPath+ "logs/indigo_history.sqlite' \"SELECT id,strftime('%H:%M:%S',ts,'localtime') FROM "+table+";\"\n"
 				else:    
 					cmd= self.liteOrPsqlString+ " -t -A -F ' ' -c \"SELECT id, to_char(ts,'HH24:MI:ss') FROM "+table+";\"\n"
+					if self.postgresUserId != "postgres" and self.postgresUserId != "": 
+						cmd	= self.postgresPasscode + cmd.replace(" postgres "," "+self.postgresUserId+" ")
+					else:
+						cmd	= self.postgresPasscode + cmd
+
 				#self.ML.myLog( text=cmd)
 				ret= subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 				lines = ret.communicate()[0].split("\n")
@@ -1395,7 +1413,8 @@ class Plugin(indigo.PluginBase):
 				if self.liteOrPsql =="sqlite": 
 					sqlDeleteCommands=    "/usr/bin/sqlite3 '"+self.indigoPath+ "logs/indigo_history.sqlite' "
 				else:    
-					sqlDeleteCommands= self.liteOrPsqlString+ "  -c "
+					sqlDeleteCommands = self.postgresPasscode + self.liteOrPsqlString+ "  -c "
+					if self.postgresUserId !="" and self.postgresUserId !="postgres": sqlDeleteCommands = sqlDeleteCommands.replace(" postgres "," "+self.postgresUserId+" ")
 				sqlDeleteCommands+="\"DELETE FROM "+table+ " WHERE id IN ( " 
 				iDstart = 0
 				#if os.path.isfile(self.userIndigoPluginDir+"steps"):
@@ -1594,15 +1613,6 @@ class Plugin(indigo.PluginBase):
 
 
 			numberOfRecords = str(valuesDict["numberOfRecords"])
-			if valuesDict["printFile"] =="":
-				try:
-					nr=int(numberOfRecords)
-					if nr > 1000:
-						self.ML.myLog( text=" too many records requested for print to log file, please print to file for numberOfRecords >1000; requested: "+numberOfRecords, errorType="smallErr")
-						return
-				except:
-						self.ML.myLog( text=" too many records requested for print to log file, please print to file for numberOfRecords >1000; requested: "+numberOfRecords, errorType="smallErr")
-						return
 				
 			
 			id = valuesDict["id"]
@@ -1640,12 +1650,18 @@ class Plugin(indigo.PluginBase):
 					sqlitePGM	= "/usr/bin/sqlite3 -header -separator \"" +separator+"\" '"+self.indigoPath+ "logs/indigo_history.sqlite'"
 					postGrePGM	= self.liteOrPsqlString +"  -A -F '" +separator+"' -c "
 
+
 			if self.liteOrPsql =="sqlite":
 				ts	= "strftime('%Y-%m-%d-%H:%M:%S',ts,'localtime') as 'ts_local'"
 				pgm	= sqlitePGM
 			else:
 				ts	= "to_char(ts,'YYYY-mm-dd-HH24:MI:ss') as ts"
-				pgm	= postGrePGM
+				if self.postgresUserId != "postgres" and self.postgresUserId != "": 
+					pgm	= self.postgresPasscode + postGrePGM.replace(" postgres "," "+self.postgresUserId+" ")
+				else:
+					pgm	= self.postgresPasscode + postGrePGM
+
+
 			
 			if devId !=0:
 				idStr=str(devId)
@@ -1721,7 +1737,7 @@ class Plugin(indigo.PluginBase):
 					sqlCommandText+= where +  andWhere+ " ID > " +str(max(0,(int(id)-1)))+orderby
 
 			sqlCommandText+=";\""
-			
+
 			if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
 			extraMsg =""
 			out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
@@ -1888,8 +1904,8 @@ class Plugin(indigo.PluginBase):
 
 		try:
 			sqlitePGM	= "/usr/bin/sqlite3   '"+self.indigoPath+ "logs/indigo_history.sqlite'"
-			postGrePGM	= self.liteOrPsqlString +" -t -c "
-
+			postGrePGM	= self.postgresPasscode + self.liteOrPsqlString +" -t -c "
+			if self.postgresUserId !="" and self.postgresUserId !="postgres": postGrePGM = postGrePGM.replace(" postgres "," "+self.postgresUserId+" ")
 
 			if self.liteOrPsql =="sqlite":
 				pgm	= sqlitePGM

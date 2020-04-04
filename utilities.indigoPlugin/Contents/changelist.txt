@@ -1,0 +1,4 @@
+Added features / changes in v1.18.27 @ 2020-04-04
+===================================================
+
+1. added  otpion for psql userid and password parameters in config
