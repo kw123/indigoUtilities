@@ -1,8 +1,9 @@
-Added features / changes in v1.18.28 @ 2020-04-30
+Added features / changes in v1.18.29 @ 2020-04-30
 ===================================================
 
 1. fixed: Enable CPU tracking  off did not stop cpu collection
-
+2. moved josn prefs for cpu to file from indigo PREFSs file
+   save 50% disk space ~ 5Mbyte, written often
 
 Added features / changes in v1.18.27 @ 2020-04-04
 ===================================================
