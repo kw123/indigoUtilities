@@ -53,7 +53,7 @@ class Plugin(indigo.PluginBase):
 		self.pathToPlugin = os.getcwd() + "/"
 		## = /Library/Application Support/Perceptive Automation/Indigo 6/Plugins/piBeacon.indigoPlugin/Contents/Server Plugin
 		p = max(0, self.pathToPlugin.lower().find("/plugins/")) + 1
-		self.indigoPath = self.pathToPlugin[:p]
+		self.indigoPath 		= self.pathToPlugin[:p]
 		self.pluginVersion      = pluginVersion
 		self.pluginId           = pluginId
 		self.pluginName         = pluginId.split(".")[-1]
@@ -88,6 +88,12 @@ class Plugin(indigo.PluginBase):
 		self.userIndigoPluginDir		= self.userIndigoDir + u"utilities/"
 		self.oldIndigoDir				= self.MAChome + u"/documents/indigoUtilities/"
 
+		self.getInstallFolderPath		= indigo.server.getInstallFolderPath()+"/"
+		self.indigoRootPath 			= indigo.server.getInstallFolderPath().split("Indigo")[0]
+		self.indigoPreferencesPluginDir = self.getInstallFolderPath+"Preferences/Plugins/"+self.pluginId+"/"
+		if not os.path.isdir(self.indigoPreferencesPluginDir): 
+			os.mkdir(self.indigoPreferencesPluginDir)
+		
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
 		self.enccodingChar      		= self.pluginPrefs.get(		"enccodingChar","utf-8")
 		self.userName           		= pwd.getpwuid( os.getuid() )[ 0 ]
@@ -113,7 +119,14 @@ class Plugin(indigo.PluginBase):
 		elif os.path.isfile("/usr/bin/python2.6"): self.pythonPath="/usr/bin/python2.6"
 		elif os.path.isfile("/usr/bin/python2.5"): self.pythonPath="/usr/bin/python2.5"
 
-		self.PLUGINSusedForCPUlimts = json.loads(self.pluginPrefs.get(	"PLUGINSusedForCPUlimts","{}"))
+		self.PLUGINSusedForCPUlimts, raw = self.readJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json")
+		if len(raw) < 10: 
+			self.PLUGINSusedForCPUlimts = {}
+			try: 	self.PLUGINSusedForCPUlimts = json.loads(self.pluginPrefs.get("PLUGINSusedForCPUlimts",""))
+			except: pass
+		try: 	del self.pluginPrefs["PLUGINSusedForCPUlimts"]
+		except: pass
+
 		self.lastPluginCpuCheck     = 0
 
 
@@ -878,7 +891,7 @@ class Plugin(indigo.PluginBase):
 		if len(plug) < 2: return valuesDict
 		if plug in self.PLUGINSusedForCPUlimts:
 			del self.PLUGINSusedForCPUlimts[plug]
-		self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+		self.writeJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json", self.PLUGINSusedForCPUlimts)
 		return valuesDict
 	####-----------------  ---------
 	def buttonConfirmPluginCALLBACK(self, valuesDict=None, typeId="", eventId=0):
@@ -889,12 +902,12 @@ class Plugin(indigo.PluginBase):
 		if len(plug) < 2: return valuesDict
 		if plug not in self.PLUGINSusedForCPUlimts:
 			self.PLUGINSusedForCPUlimts[plug] = {"evID":eventId, "lastCPU":0, "lastTime":0, "cpuThreshold": float(valuesDict["cpuThreshold"]), "lastCPUsub":{} }
-		self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+		self.writeJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json", self.PLUGINSusedForCPUlimts)
 		return valuesDict
 
 	####-----------------  ---------
 	def validateEventConfigUi(self, valuesDict=None, typeId="", eventId=0):
-		self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+		self.writeJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json", self.PLUGINSusedForCPUlimts)
 		return (True, valuesDict)
 		
 
@@ -962,6 +975,7 @@ class Plugin(indigo.PluginBase):
 	
 	####-----------------  
 	def checkPluginCPU(self):
+		if not self.PLUGINSallCalcCPU: return 
 		if time.time() - self.lastPluginCpuCheck < 100: return 
 		try:
 			psef     = self.getPSEF()
@@ -1050,7 +1064,7 @@ class Plugin(indigo.PluginBase):
 				totalDelta +=deltaCPUsub
 					
 				
-			self.pluginPrefs["PLUGINSusedForCPUlimts"]= json.dumps(self.PLUGINSusedForCPUlimts)
+			self.writeJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json", self.PLUGINSusedForCPUlimts)
 			if self.PLUGINSallCalcCPU:
 				try:     
 					var = indigo.variables["CPU_usage_AllIndigoAndPlugins"]
@@ -2274,7 +2288,9 @@ class Plugin(indigo.PluginBase):
 			if time.time() - self.lastcpuTemp < float(self.cpuTempFreq): return
 			self.lastcpuTemp  = time.time()
 		
-			data = (subprocess.Popen("'"+self.pathToPlugin+"osx-temp-fan'",shell=True,stdout=subprocess.PIPE).communicate()[0].strip("\n")).split("\n")
+			data = subprocess.Popen("'"+self.pathToPlugin+"osx-temp-fan'",shell=True,stdout=subprocess.PIPE).communicate()
+			#self.ML.myLog( text=" data fan:"+unicode(data) )
+			data = data[0].strip("\n").split("\n")
 			for line in data:
 				ll = line.split(":")
 				if len(ll) < 2: continue
@@ -2294,3 +2310,45 @@ class Plugin(indigo.PluginBase):
 		except  Exception, e:
 			if len(unicode(e)) > 5:
 				self.ML.myLog( text="error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+
+
+	#################################
+	def writeJson(self, fName, data, sort_keys=False, indent=0):
+		try:
+			if indent != 0:
+				out = json.dumps(data,sort_keys=sort_keys, indent=indent)
+			else:
+				out = json.dumps(data,sort_keys=sort_keys)
+			#logger.log(10, u" writeJson-in:{}\nout: {}".format(data, out) )
+		##print "writing json to "+fName, out
+			f=open(fName,"w")
+			f.write(out)
+			f.close()
+		except	Exception as e:
+			indigo.server.log(u"cLine {} has error={}".format(sys.exc_info()[-1].tb_lineno, e))
+		return
+
+
+	#################################
+	def readJson(self, fName):
+		data ={}
+		raw = ""
+		try:
+			if not os.path.isfile(fName):
+				indigo.server.log( u"no fname:{}".format(fName))
+				return {},""
+			f=open(fName,"r")
+			raw = f.read()
+			f.close()
+			data = json.loads(raw)
+		except	Exception as e:
+			indigo.server.log(u"Line {} has error={}, fname:{}, data:{}".format(Gsys.exc_info()[-1].tb_lineno, e, fName, raw ))
+			return {}, ""
+		return data, raw
+
+	####-----------------	 ---------
+	def completePath(self,inPath):
+		if len(inPath) == 0: return ""
+		if inPath == " ":	 return ""
+		if inPath[-1] !="/": inPath +="/"
+
