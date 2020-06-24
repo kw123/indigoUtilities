@@ -118,7 +118,7 @@ class MLX():
 					return
 
 				if errorType == u"smallErr":
-					if showDate: ts = datetime.datetime.now().strftime(u"%H:%M:%S")
+					if showDate: ts = datetime.datetime.now().strftime(u"%m-%d %H:%M:%S")
 					f.write(u"----------------------------------------------------------------------------------\n")
 					f.write((ts+u" ".ljust(12)+u"-"+text+u"\n").encode(u"utf8"))
 					f.write(u"----------------------------------------------------------------------------------\n")
@@ -126,15 +126,15 @@ class MLX():
 					return
 
 				if errorType == u"bigErr":
-					if showDate: ts = datetime.datetime.now().strftime(u"%H:%M:%S")
-					ts = datetime.datetime.now().strftime(u"%H:%M:%S")
+					if showDate: ts = datetime.datetime.now().strftime(u"%m-%d %H:%M:%S")
+					ts = datetime.datetime.now().strftime(u"%m-%d %H:%M:%S")
 					f.write(u"==================================================================================\n")
 					f.write((ts+u" "+u" ".ljust(12)+u"-"+text+u"\n").encode(u"utf8"))
 					f.write(u"==================================================================================\n")
 					f.close()
 					return
 
-				if showDate: ts = datetime.datetime.now().strftime(u"%H:%M:%S")
+				if showDate: ts = datetime.datetime.now().strftime(u"%m-%d %H:%M:%S")
 				if mType == u"":
 					f.write((ts+u" " +u" ".ljust(25)  +u"-" + text + u"\n").encode("utf8"))
 				else:

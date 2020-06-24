@@ -93,6 +93,7 @@ class Plugin(indigo.PluginBase):
 		self.indigoPreferencesPluginDir = self.getInstallFolderPath+"Preferences/Plugins/"+self.pluginId+"/"
 		if not os.path.isdir(self.indigoPreferencesPluginDir): 
 			os.mkdir(self.indigoPreferencesPluginDir)
+		self.indigoLogPluginDir 		= self.getInstallFolderPath+"Logs/Plugins/"+self.pluginId+"/"
 		
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
 		self.enccodingChar      		= self.pluginPrefs.get(		"enccodingChar","utf-8")
@@ -243,8 +244,7 @@ class Plugin(indigo.PluginBase):
 	def setLogfile(self,lgFile):
 		self.logFileActive =lgFile
 		if   self.logFileActive =="standard":	self.logFile = ""
-		elif self.logFileActive =="indigo":		self.logFile = self.indigoPath.split("Plugins/")[0]+"Logs/"+self.pluginId+"/plugin.log"
-		else:									self.logFile = self.indigoConfigDir +"plugin.log"
+		else:									self.logFile = self.indigoLogPluginDir +"plugin.log"
 		self.ML.myLogSet(debugLevel = self.debugLevel ,logFileActive=self.logFileActive, logFile = self.logFile, pluginSelf=self)
 
 

@@ -9,12 +9,11 @@
     <Field id="infoLabel226" type="label"> <Label>== Debug:... </Label>  </Field>
 
     <Field    id="debugLogic"       type="checkbox"  defaultValue="false"   > <Label>... (1) Logic:</Label>  </Field>
-    <Field    id="debugSQL"         type="checkbox"  defaultValue="false"   > <Label>... (2) logMessages:</Label>  </Field>
+    <Field    id="debugSQL"         type="checkbox"  defaultValue="false"   > <Label>... (2) log SQL queries ..:</Label>  </Field>
     <Field    id="debugall"         type="checkbox"  defaultValue="false"   > <Label>... (20) all of the above = everything:</Label>  </Field>
     <Field    id="logFileActive2"   type="menu"      defaultValue="standard" > <Label> send logs to ..:</Label>
         <List>
             <Option value="standard" > no special utilities logfile, std indigo logfile</Option>
-            <Option value="user"     > ~/indigo/utilities/plugin.log                    </Option>
             <Option value="indigo"   > .. Perceptive Automation/Indigo x/Logs/com.karlwachs.utilities/plugin.log </Option>
         </List>
     </Field>
