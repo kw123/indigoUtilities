@@ -1,3 +1,9 @@
+Added features / changes in v1.18.32 @ 2020-12-08
+===================================================
+
+1. fixed ERROR:  relation "device_history_" does not exist
+
+
 Added features / changes in v1.18.30 @ 2020-06-24
 ===================================================
 

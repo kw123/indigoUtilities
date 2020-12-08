@@ -846,8 +846,8 @@ class Plugin(indigo.PluginBase):
 
 
 
-####-----------------   devOrVarCALLBACK          ---------
-	def buttonConfirmPluginCALLBACK(self,valuesDict="",typeId=""):
+####-----------------             ---------
+	def buttonConfirmPluginCALLBACK(self,valuesDict="",typeId="", targetId=0):
 		if valuesDict["devOrVar"] =="dev":
 			valuesDict["msg"]="select device"
 		else:
@@ -1097,13 +1097,13 @@ class Plugin(indigo.PluginBase):
 		self.printNumberOfRecords =1
 		indigo.server.log("started print # of records for devices and variables ")
 		return
-####-----------------   devOrVarCALLBACK          ---------
+####-----------------             ---------
 	def devOrVarCALLBACKAction(self,action1,typeId="",devId=""):
 		self.devOrVarCALLBACK(action1)
 		return
 
 ####-----------------   devOrVarCALLBACK          ---------
-	def devOrVarCALLBACK(self,valuesDict="",typeId=""):
+	def devOrVarCALLBACK(self,valuesDict="",typeId="",devId=""):
 		if valuesDict["devOrVar"] =="dev":
 			valuesDict["msg"]="select device"
 		else:
@@ -1139,7 +1139,7 @@ class Plugin(indigo.PluginBase):
 		return
 
 ####-----------------   pickVariableCALLBACK          ---------
-	def pickVariableCALLBACK(self,valuesDict="",typeId=""):
+	def pickVariableCALLBACK(self,valuesDict="",typeId="",devId=""):
 		self.varID= int(valuesDict["variable"])
 		self.devID= 0
 		valuesDict["msg"]=""
@@ -1242,7 +1242,7 @@ class Plugin(indigo.PluginBase):
 				name= indigo.variables[int(valuesDict["variable"])].name
 			else:   
 				table         = "device_history_"+valuesDict["device"]
-				name= indigo.devices[int(valuesDict["device"])].name
+				name = indigo.devices[int(valuesDict["device"])].name
 			deleteBeforeThisDays = int(valuesDict["deleteBeforeThisDays"])
 			nowTS =datetime.datetime.now() 
 			dateCutOff = (nowTS-datetime.timedelta(deleteBeforeThisDays,hours=nowTS.hour,minutes=nowTS.minute,seconds=nowTS.second)).strftime("%Y%m%d%H%M%S")
@@ -1701,9 +1701,16 @@ class Plugin(indigo.PluginBase):
 			else:
 				orderby = ""
 			fixOutput = False
+
+			for ss in range(len(states)):
+				if states[ss] != "*" and states[ss] != "":
+					if self.liteOrPsql == "sqlite":
+						states[ss] = "["+states[ss].lower()+"]"
+					else:
+						states[ss] = '\\"'+states[ss].lower()+'\\"'
 			
 			sqlCommandText=  pgm
-			if states[0] =="*":
+			if states[0] == "*":
 				if self.liteOrPsql =="sqlite":
 					sqlCommandText+=  " \"SELECT "+ts+" , * "
 					fixOutput = True
@@ -1712,12 +1719,14 @@ class Plugin(indigo.PluginBase):
 			else:
 				sqlCommandText+=  " \"SELECT id, "+ts
 				for st in states:
-					if st !="":
+					if st != "":
 						sqlCommandText+=","+st.replace(".","_")
 			sqlCommandText+=  " from "+devOrVar+ idStr
 			
 			where =""
 			andWhere =" WHERE"
+
+
 			if states[0] !="*":
 				if valuesDict["state0Condition"] !="any" and valuesDict["state0Condition"] !="" and valuesDict["state0Value"] !="":
 					andWhere =" AND "
