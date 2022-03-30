@@ -12,8 +12,14 @@ import json
 import cProfile
 import pstats
 import myLogPgms.myLogPgms 
+import traceback
 
+try:
+	unicode("a")
+except:
+	unicode = str
 
+import codecs
 
 '''
 options:
@@ -115,10 +121,17 @@ class Plugin(indigo.PluginBase):
 		self.varID 						= 0
 		self.quitNow					= "" # set to !="" when plugin should exit ie to restart, needed for subscription -> loop model
 		self.printNumberOfRecords 		= 0
-		self.pythonPath="/usr/bin/python2.6"
-		if   os.path.isfile("/usr/bin/python2.7"): self.pythonPath="/usr/bin/python2.7"
-		elif os.path.isfile("/usr/bin/python2.6"): self.pythonPath="/usr/bin/python2.6"
-		elif os.path.isfile("/usr/bin/python2.5"): self.pythonPath="/usr/bin/python2.5"
+		if os.path.isfile(u"/Library/Frameworks/Python.framework/Versions/Current/bin/python3"):
+			self.pythonPath				= u"/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
+		elif os.path.isfile(u"/usr/local/bin/python"):
+			self.pythonPath				= u"/usr/local/bin/python"
+		elif os.path.isfile(u"/usr/bin/python2.7"):
+			self.pythonPath				= u"/usr/bin/python2.7"
+		else:
+			self.errorLog(u"FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping INDIGOplotD")
+			self.quitNOW = "none of python versions 2.7 3.x is installed "
+			return
+		indigo.server.log(u"using '" +self.pythonPath +"' for utily programs")
 
 		self.PLUGINSusedForCPUlimts, raw = self.readJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json")
 		if len(raw) < 10: 
@@ -180,7 +193,7 @@ class Plugin(indigo.PluginBase):
 
 		self.setLogfile(self.pluginPrefs.get("logFileActive2", "standard"))
 		self.ML.myLog( text=u"initialized")
-	
+
 		return
 
 ####-------------------------------------------------------------------------####
@@ -300,8 +313,9 @@ class Plugin(indigo.PluginBase):
 		return
 
 	def getOpenFiles(self):
-		xx = subprocess.Popen("/usr/sbin/lsof | grep -v 'com.apple.' | grep -v 'Support/Perceptive Automation/' | grep -v '>localhost:indigo-server' | grep -v '/System/Library/' | grep -v '/Python.framework/' | grep -v '/CoreServices/' | grep -v '/usr/lib/' | grep -v '/usr/share/'  | grep -v '/private/var/db/'  | grep -v '/dev/null'  | grep -v '/dev/urandom'  ",
-		shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n").split("\n")
+		#xx = subprocess.Popen("/usr/sbin/lsof | grep -v 'com.apple.' | grep -v 'Support/Perceptive Automation/' | grep -v '>localhost:indigo-server' | grep -v '/System/Library/' | grep -v '/Python.framework/' | grep -v '/CoreServices/' | grep -v '/usr/lib/' | grep -v '/usr/share/'  | grep -v '/private/var/db/'  | grep -v '/dev/null'  | grep -v '/dev/urandom'  ",
+		ret, err = self.readPopen("/usr/sbin/lsof | grep -v 'com.apple.' | grep -v '>localhost:indigo-server' | grep -v '/System/Library/' | grep -v '/Python.framework/' | grep -v '/CoreServices/' | grep -v '/usr/lib/' | grep -v '/usr/share/'  | grep -v '/private/var/db/'  | grep -v '/dev/null'  | grep -v '/dev/urandom'  ")
+		xx = ret.strip("\n").split("\n")
 		fileList ={}
 		for m in xx:
 			mm = m.split()
@@ -311,7 +325,7 @@ class Plugin(indigo.PluginBase):
 				if mm[1] not in fileList: fileList[mm[1]] =[]
 				if len(mm[8]) > 5:      ### exclude std files 
 					fileList[mm[1]].append(" ".join(mm[8:])) # file name
-	
+		#indigo.server.log("getOpenFiles {}".format(fileList))
 		return  fileList
 
 
@@ -341,14 +355,26 @@ class Plugin(indigo.PluginBase):
 					pName = (line.split(SPLIT)[1]).split(".indigoPlugin")[0]
 					pType ="plugin"
 					try:
-						plugId  = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["CFBundleIdentifier"]
-						version = plistlib.readPlist((self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist"))["PluginVersion"]
-					except  Exception, e:
+						if sys.version_info[0]  > 2:
+							f = open(self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist","r", encoding="utf-8")
+						else:
+							f = codecs.open(self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist","r", "utf-8")
+						xmlLines = f.read()
+						temp = xmlLines.split("CFBundleIdentifier</key>")
+						if len(temp) >1:
+							plugId = temp[1].split("</string>")[0].split("<string>")[1]
+						else: plugId = ""
+						temp = xmlLines.split("PluginVersion</key>")
+						if len(temp) >1:
+							version = temp[1].split("</string>")[0].split("<string>")[1]
+						else: version = ""
+
+					except  Exception as e:
 						if unicode(e).find("No such file or directory") > -1:
 							plugId   = pName
 							version  = "noVer."
 						else:
-							self.ML.myLog( text=" print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+							self.exceptionHandler(40,e)
 							continue
 				elif line.find("/Applications/Indigo ") > -1 and line.find(".app/Contents/MacOS/Indigo ") > -1: 
 					pType  = "IndigoClient"
@@ -395,8 +421,8 @@ class Plugin(indigo.PluginBase):
 
 				#indigo.server.log (plugId+"  :" +unicode(plugList[plugId]))
 								
-		except  Exception, e:
-			self.ML.myLog( text="getActivePlugins  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 				
 		return plugList
 
@@ -411,7 +437,8 @@ class Plugin(indigo.PluginBase):
 ####-----------------  print device / variable states .. ---------
 	def printMACtemperatures(self):
 		out ="\nTemperatures and fan speeds of indigo MAC \n"
-		ll  = subprocess.Popen("'"+self.pathToPlugin+"osx-temp-fan'",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0].strip("\n")
+		ret, err = self.readPopen("'"+self.pathToPlugin+"osx-temp-fan'")
+		ll = ret.strip("\n")
 		for line in ll.split("\n"):
 			if line.find("-99") >-1: continue
 			items = line.split(":")
@@ -480,8 +507,8 @@ class Plugin(indigo.PluginBase):
 				if pID in fileList and len(fileList[pID]) > 0:
 					for ff in fileList[pID]:
 						out.append(" ".ljust(7+2+11+1+19+2)+"             openFile:   "+ff+"\n")                
-			except  Exception, e:
-				self.ML.myLog( text=" print plugin name  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+			except  Exception as e:
+				self.exceptionHandler(40,e)
 		indigo.server.log("".join(out))
 
 
@@ -673,7 +700,7 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log(    u"Created graphviz input file:   \""+self.userIndigoPluginDir+"zWave.dot\"")
 		
 		if os.path.isfile("/usr/local/bin/dot"):
-			ret=subprocess.Popen("/usr/local/bin/dot -Tsvg "+self.userIndigoPluginDir+"zWave.dot > "+self.userIndigoPluginDir+"zWave.svg ",shell=True).communicate()
+			subprocess.Popen("/usr/local/bin/dot -Tsvg "+self.userIndigoPluginDir+"zWave.dot > "+self.userIndigoPluginDir+"zWave.svg ",shell=True).communicate()
 			indigo.server.log(u"Created graphviz outpout file: \""+self.userIndigoPluginDir+"zWave.svg\"")
 
 		return
@@ -776,7 +803,8 @@ class Plugin(indigo.PluginBase):
 
 ####-----------------  ---------
 	def executeBACKUPpostgres(self, valuesDict="",typeId="",devId=""):
-		if len(subprocess.Popen("ps -ef | grep '/pg_dump ' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0])>20:
+		ret, err = self.readPopen("ps -ef | grep '/pg_dump ' | grep -v grep ")
+		if len(ret)>20:
 			self.ML.myLog( text=u"previous postgres backup dump  job still running, please wait until finished ")
 			return 
 
@@ -792,7 +820,7 @@ class Plugin(indigo.PluginBase):
 		# add zip, doing dump and zip together eats too much CPU, need to do it in 2 steps , then remove temp file  ( dump && gzip && rm ... )
 		cmd= commandLineForDump+"  > "+  self.userIndigoPluginDir+"postgresBackup.dmp  &&  gzip "+ self.userIndigoPluginDir+"postgresBackup.dmp  > " + self.userIndigoPluginDir+"postgresBackup.zip  &&  rm "+ self.userIndigoPluginDir+"postgresBackup.dmp  &"
 		self.ML.myLog( text=cmd)
-		ret= subprocess.Popen(cmd, shell=True)
+		subprocess.Popen(cmd, shell=True)
 		self.ML.myLog( text='to restore: 1. in pgadmin: "DROP DATABASE indigo_history;"   "CREATE DATABASE indigo_history template = template0;"  2.unzip postgresBackup.zip ; 3. "pathtopostgresapp/psql indigo_history -U postgres < postgresBackup"' )
 		self.postgresBackupStarted = time.time() 
 
@@ -801,7 +829,9 @@ class Plugin(indigo.PluginBase):
 
 ####-----------------  ---------
 	def executeSQL(self, valuesDict,typeId,devId,mode):
-		if len(subprocess.Popen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0])>20:
+		ret, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
+
+		if len(ret)>20:
 			self.ML.myLog( text=u"previous SQLite job still running, please wait until finished ")
 			return (valuesDict, u"previous SQLite job still running, please wait until finished ")
 
@@ -921,16 +951,16 @@ class Plugin(indigo.PluginBase):
 				GREP=" "
 			if useEncode:
 				try: 
-					ret  = subprocess.Popen("export LANG="+self.localeLanguage+"."+self.enccodingChar+" &&/bin/ps -ef"+GREP,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]
-					ret  = ret.decode(self.enccodingChar)
+					ret, err = self.readPopen("export LANG="+self.localeLanguage+"."+self.enccodingChar+" &&/bin/ps -ef"+GREP)
 				except: 
 					useEncode = False
 			if not useEncode:
-				ret  = subprocess.Popen("/bin/ps -ef "+GREP,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]
+				ret, err = self.readPopen("/bin/ps -ef "+GREP)
 			
 			ret  = ret.strip("\n")
-		except  Exception, e:
-			self.ML.myLog( text= "getPSEF error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+		#self.ML.myLog( text= "getPSEF {} ".format(ret))
 		return ret
 
 	####-----------------  
@@ -943,15 +973,14 @@ class Plugin(indigo.PluginBase):
 				GREP=" "
 			if useEncode:
 				try: 
-					ret  = subprocess.Popen("export LANG="+self.localeLanguage+"."+self.enccodingChar+" &&/bin/ps aux"+GREP,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]
-					ret  = ret.decode(self.enccodingChar)
+					ret, err = self.readPopen("export LANG="+self.localeLanguage+"."+self.enccodingChar+" &&/bin/ps aux"+GREP)
 				except: 
 					useEncode = False
 			if not useEncode:
-				ret  = subprocess.Popen("/bin/ps aux"+GREP,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]
+				ret, err = self.readPopen("/bin/ps aux"+GREP)
 			ret  = ret.strip("\n")
-		except  Exception, e:
-			self.ML.myLog( text= "getPSAUX error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		return ret
 
 	####-----------------  
@@ -1072,8 +1101,8 @@ class Plugin(indigo.PluginBase):
 				except:  
 					indigo.variable.create("CPU_usage_AllIndigoAndPlugins","%.2f"%totalDelta,"")
 			self.lastPluginCpuCheck = time.time()
-		except  Exception, e:
-			self.ML.myLog( text= "checkPluginCPU error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		return 
 
 
@@ -1150,9 +1179,9 @@ class Plugin(indigo.PluginBase):
 	def ipnumberOfDeviceCallback(self,valuesDict="",typeId=""):
 		ipNumber= valuesDict["ipDevice"]
 		self.ML.myLog( text="\nping result for /sbin/ping -c 2 -W 2  "+ipNumber+"    -------------- START")
-		ret = subprocess.Popen("/sbin/ping -c 2 -W 2  "+ipNumber,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-		indigo.server.log("\n"+ret[0],type=" ")
-		if len(ret[1]) >2: self.ML.myLog( text="ping error:"+ ret[1], mType=" ")
+		ret, err = self.readPopen("/sbin/ping -c 2 -W 2  "+ipNumber)
+		indigo.server.log("\n"+ret,type=" ")
+		if len(ret) >2: self.ML.myLog( text="ping error:"+ ret, mType=" ")
 		self.ML.myLog( text="ping           ------------------ END", mType=" ")
 		return valuesDict
 
@@ -1220,8 +1249,8 @@ class Plugin(indigo.PluginBase):
 			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="pruneDevsandVarsaction  "+unicode(valuesDict))
 			self.executePruneDatabase(valuesDict,test=False)
 		
-		except Exception, e:
-				self.ML.myLog( text= "executePruneDatabase error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+		except Exception as e:
+			self.exceptionHandler(40,e)
 
 
 
@@ -1254,7 +1283,8 @@ class Plugin(indigo.PluginBase):
 
 			
 			if self.liteOrPsql =="sqlite":
-				if len(subprocess.Popen("/bin/ps -ef | grep sqlite3 | grep -v grep ",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]) > 10:
+				ret, err = self.readPopen("/bin/ps -ef | grep sqlite3 | grep -v grep ")
+				if len(ret) > 10:
 					self.ML.myLog( text= "SQLITE3 is still running please stop before using prune database")
 					return
 					
@@ -1264,10 +1294,8 @@ class Plugin(indigo.PluginBase):
 				cmd= self.liteOrPsqlString+ " -t -A -F ' ' -c \"SELECT id, to_char(ts,'YYYYmmddHH24MIss') FROM "+table+orderby+";\"\n"
 				if self.postgresUserId != "" and self.postgresUserId != "postgres": cmd = cmd.replace(" postgres "," "+self.postgresUserId+" ")
 
-			#self.ML.myLog( text=cmd)
-			ret= subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-			#self.ML.myLog( text="ret"+  ret[0][0:200]+"-\n"+ret[1])
-			lines = ret[0].split("\n")
+			ret, err = self.readPopen(cmd)
+			lines = ret.split("\n")
 			
 			firstIDtoKeep          = 0
 			nn                     = 0
@@ -1285,9 +1313,9 @@ class Plugin(indigo.PluginBase):
 					timeWOmsec= ts.split(".")[0]
 					if timeWOmsec >= dateCutOff:
 						break
-				except  Exception, e:#
-					 self.ML.myLog( text= "executePruneDatabase error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
-				   
+				except  Exception as e:#
+					self.exceptionHandler(40,e)
+						
 			if self.ML.decideMyLog(loglevel): self.ML.myLog( text= "first record found that is above cut off at "+ timeWOmsec+"; id: "+ str(firstIDtoKeep)+"; that is the "+str(nn) +"th record out of " +str(len(lines))+ " total records" )
 			if self.liteOrPsql =="sqlite": 
 					sqlDeleteCommands=    "/usr/bin/sqlite3 '"+self.indigoPath+ "logs/indigo_history.sqlite' "
@@ -1297,11 +1325,11 @@ class Plugin(indigo.PluginBase):
 			sqlDeleteCommands+="\"DELETE FROM "+table+ " WHERE id < " +str(firstIDtoKeep)+";\""
 			if self.ML.decideMyLog(loglevel): self.ML.myLog( text="cmd= "+ sqlDeleteCommands)
 			if not test: 
-				ret= subprocess.Popen(sqlDeleteCommands, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-				if self.ML.decideMyLog("SQL"): self.ML.myLog( text= "SQL returned: "+ ret[0]+"-"+ret[1])
+				ret, err = self.readPopen(sqlDeleteCommands)
+				if self.ML.decideMyLog("SQL"): self.ML.myLog( text= "SQL returned: "+ ret+"-"+err)
 
-		except Exception, e:
-				self.ML.myLog( text= "executePruneDatabase error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+		except Exception as e:
+			self.exceptionHandler(40,e)
 
 
 ####-----------------   squeeze postgres database         ---------
@@ -1348,7 +1376,9 @@ class Plugin(indigo.PluginBase):
 
 
 		if self.liteOrPsql =="sqlite":
-			if len(subprocess.Popen("/bin/ps -ef | grep sqlite3 | grep -v grep ",shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()[0]) > 10:
+			ret, err = self.readPopen("/bin/ps -ef | grep sqlite3 | grep -v grep ")
+
+			if len(ret) > 10:
 				self.ML.myLog( text= "SQLITE3 is still running please stop before using delete duplicate records")
 				self.executeDatabaseSqueezeCommand =""
 				return
@@ -1393,8 +1423,8 @@ class Plugin(indigo.PluginBase):
 						cmd	= self.postgresPasscode + cmd
 
 				#self.ML.myLog( text=cmd)
-				ret= subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-				lines = ret.communicate()[0].split("\n")
+				ret, err = self.readPopen(cmd)
+				lines = ret.split("\n")
 				#print lines
 				idsToDelete     = [] 
 				lasttimeWOmsec  = ""
@@ -1419,8 +1449,8 @@ class Plugin(indigo.PluginBase):
 						else:   
 							lasttimeWOmsec = timeWOmsec
 						lastId=id    
-					except  Exception, e:
-						 self.ML.myLog( text= "executeDatabaseSqueeze error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+					except  Exception as e:
+						self.exceptionHandler(40,e)
 						 
 				if  nDelete == 0: continue
 
@@ -1458,21 +1488,21 @@ class Plugin(indigo.PluginBase):
 						f=open(self.userIndigoPluginDir+"squeezeSQL","w")  
 						f.write(cmd+"\n")
 						f.close()
-						ret=subprocess.Popen("chmod +xxx "+ self.userIndigoPluginDir+ "squeezeSQL", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+						ret, err = self.readPopen("chmod +xxx "+ self.userIndigoPluginDir+ "squeezeSQL")
 
 					nAllIn       += nIn
 					nAllDelete   += nIDs
 					ndevsWdelete +=1
 					if execOrTest.find("exec") >-1:
-						ret= subprocess.Popen(self.userIndigoPluginDir+ "squeezeSQL", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+						ret, err = self.readPopen(self.userIndigoPluginDir+ "squeezeSQL")
 						if execOrTest.find("quiet")==-1 :
-							self.ML.myLog( text= ret[0].strip("\n")+"-"+ret[1].strip("\n"), mType="... sql response:" )
-						if unicode(ret).lower().find("error")>-1:
-							self.ML.myLog( text="stopping due to error you might need to kill sqlite3 processes \n"+ ret[0].strip("\n")+"-"+ret[1].strip("\n"), mType="... sql error:" )
+							self.ML.myLog( text= ret.strip("\n")+"-"+err.strip("\n"), mType="... sql response:" )
+						if ret.lower().find("error")>-1:
+							self.ML.myLog( text="stopping due to error you might need to kill sqlite3 processes \n"+ ret.strip("\n")+"-"+err.strip("\n"), mType="... sql error:" )
 							break
 					
-			except Exception, e:
-				self.ML.myLog( text= "executeDatabaseSqueeze error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e) )
+			except Exception as e:
+				self.exceptionHandler(40,e)
 		if execOrTest.find("exec") >-1:
 			self.ML.myLog( text= "Number of devices:"+ str(nDEVS)+"; devices where records where deleted: " +str(ndevsWdelete)+"; TOTAL  # of records deleted: " +str(nAllDelete)+ ";  out of: " + str(nAllIn) +" records  ===============\n", mType="================")
 
@@ -1553,8 +1583,8 @@ class Plugin(indigo.PluginBase):
 				self.ML.myLog( text=" printSQLaction   variable or dev not specified: "+valuesDict["devOrVar"], errorType="smallErr")
 
 			self.printDeviceStates(valuesDict)
-		except  Exception, e:
-				self.ML.myLog( text=" printSQLaction  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		self.executeDatabaseSqueezeCommand = ""        
 		return
 
@@ -1637,8 +1667,8 @@ class Plugin(indigo.PluginBase):
 				
 			valuesDict= self.printSQL(devId,varId,states,numberOfRecords,id,valuesDict["separator"],valuesDict["header"],valuesDict)
 
-		except  Exception, e:
-				self.ML.myLog( text=" executeCALLBACK  error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		return valuesDict
 
 ####-----------------   create sql statement, execute it and print outpout to logfile          ---------
@@ -1763,23 +1793,23 @@ class Plugin(indigo.PluginBase):
 
 			if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
 			extraMsg =""
-			out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-			if out[1].find("is locked")>-1:
+			ret, err = self.readPopen(sqlCommandText)
+			if err.find("is locked")>-1:
 				if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 				self.sleep(0.5)
-				out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-				if out[1].find("is locked")>-1:
+				ret, err = self.readPopen(sqlCommandText)
+				if err.find("is locked")>-1:
 					if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 					self.sleep(0.5)
-					out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+					ret, err = self.readPopen(sqlCommandText)
 
 
-			if len(out[1]) > 1:
+			if len(err) > 1:
 				valuesDict["msg"]="error in querry, check logfile"
-				self.ML.myLog( text="error in querry:\n" +out[1] , mType="OUTPUT: ", errorType="bigErr" )
+				self.ML.myLog( text="error in querry:\n" +err , mType="OUTPUT: ", errorType="bigErr" )
 
 			else:
-				result=copy.copy(out[0])
+				result=copy.copy(ret)
 				fFile=False
 				if separator!="" and states[0]!="*":## remove spaces before and after items and add headerline if requested
 					if separator!="":
@@ -1892,8 +1922,8 @@ class Plugin(indigo.PluginBase):
 						indigo.variable.updateValue("SQLValueOutput",value1)
 						indigo.variable.updateValue("SQLLineOutput",lines[nn])
 						error = False
-					except  Exception, e:
-						self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+					except  Exception as e:
+						self.exceptionHandler(40,e)
 				else:							## put   record #id to variable
 					nn=0
 					if header =="yes": nn+=1
@@ -1909,16 +1939,16 @@ class Plugin(indigo.PluginBase):
 							indigo.variable.updateValue("SQLValueOutput",value1)
 							indigo.variable.updateValue("SQLLineOutput",lines[nn])
 							error = False
-						except  Exception, e:
-							self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e))
+						except  Exception as e:
+							self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 
 				if error:
 					self.ML.myLog( text="printSQL error  sql output - no string returned for "+states[0]+"  number of lines returned: "+  str(len(lines)) +" \n"+out[0], errorType="smallErr")
 					valuesDict["msg"]="printSQL error  sql output - no string returned for "+states[0]
 	
 
-		except  Exception, e:
-				self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+		except  Exception as e:
+				self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_info()[2].tb_lineno, e), errorType="smallErr")
 		return valuesDict
 
 
@@ -1940,20 +1970,20 @@ class Plugin(indigo.PluginBase):
 						name=dd.name
 						sqlCommandText= pgm+ " \"SELECT COUNT(*) FROM device_history_"+str(id)+";\""
 						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
-						out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+						ret, err = self.readPopen(sqlCommandText)
 						#self.ML.myLog( text=name+" "+ unicode(out))
-						if out[1].find("is locked")>-1:
+						if err.find("is locked")>-1:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 							self.sleep(0.5)
-							out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-							if out[1].find("is locked")>-1:
+							ret, err = self.readPopen(sqlCommandText)
+							if err.find("is locked")>-1:
 								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 								self.sleep(0.5)
-								out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-						if len(out[1]) >0:
-								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base: "+ unicode(out[1]) )
+								ret, err = self.readPopen(sqlCommandText)
+						if len(err) >0:
+								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base: {}".format(err) )
 						try:
-							ii = int(out[0].strip("\n"))
+							ii = int(ret.strip("\n"))
 						except:
 							ii=0
 						devList.append([ii,str(id).rjust(12)+" / "+name])
@@ -1966,20 +1996,20 @@ class Plugin(indigo.PluginBase):
 						name=dd.name
 						sqlCommandText= pgm+ " \"SELECT COUNT(*) FROM variable_history_"+str(id)+";\""
 						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
-						out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-						if out[1].find("is locked")>-1:
+						ret, err = self.readPopen(sqlCommandText)
+						if err.find("is locked")>-1:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 							self.sleep(0.5)
-							out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-							if out[1].find("is locked")>-1:
+							ret, err = self.readPopen(sqlCommandText)
+							if err.find("is locked")>-1:
 								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 								self.sleep(0.5)
-								out= subprocess.Popen(sqlCommandText,shell=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-						if len(out[1]) >0:
+								ret, err = self.readPopen(sqlCommandText)
+						if len(err) >0:
 								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base: "+ unicode(out[1]) )
 						
 						try:
-							ii = int(out[0].strip("\n"))
+							ii = int(ret.strip("\n"))
 						except:
 							ii=0
 						varList.append([ii,str(id).rjust(12)+" / "+name])
@@ -1991,13 +2021,9 @@ class Plugin(indigo.PluginBase):
 			self.ML.myLog( text="   # of records        varId /  Name             for VARIABLES")
 			for dd in varList:
 				self.ML.myLog( text=str(dd[0]).rjust(15)+" "+dd[1]  )
-			
-		
 
-
-
-		except  Exception, e:
-				self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		return
 
 
@@ -2021,7 +2047,7 @@ class Plugin(indigo.PluginBase):
 					pri  = ""
 				self.timeTrackWaitTime = 20
 				return cmd, pri
-		except	Exception, e:
+		except	Exception as e:
 			pass
 
 		self.timeTrackWaitTime = 60
@@ -2142,7 +2168,7 @@ class Plugin(indigo.PluginBase):
 					self.printNumberOfRecords =0
 
 				if self.postgresBackupStarted !=0:
-					ret = subprocess.Popen("ps -ef | grep '/pg_dump ' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0]
+					ret, err = self.readPopen("ps -ef | grep '/pg_dump ' | grep -v grep ")
 					if len(ret)<5:
 						self.ML.myLog( text=u" postgres backup dump  finished after " + str(int(time.time()-self.postgresBackupStarted))+"  seconds" )
 						self.postgresBackupStarted =0
@@ -2156,7 +2182,7 @@ class Plugin(indigo.PluginBase):
 					if os.path.isfile(self.userIndigoPluginDir+"steps"):
 						ll= os.path.getsize(self.userIndigoPluginDir+"steps")
 						if ll==0: continue
-						steps= subprocess.Popen("cat '"+self.userIndigoPluginDir+"steps'" , stdout = subprocess.PIPE, shell = True).communicate()[0]
+						ret, err = self.readPopen("cat '"+self.userIndigoPluginDir+"steps'")
 						lines = steps.strip("\n").split("\n")
 						nlines = len(lines)
 						if nlines == lastnlines: continue
@@ -2168,7 +2194,8 @@ class Plugin(indigo.PluginBase):
 					self.cpuTempFanUpdate()
 				## if backup started check if finished
 				if self.backupStarted:
-						if len(subprocess.Popen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0])>20: continue
+						ret, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
+						if len(ret)>20: continue
 						if not os.path.isfile(self.userIndigoPluginDir+"retcodes"): continue
 						if os.path.getsize(self.userIndigoPluginDir+"retcodes") >1:
 							self.ML.myLog( text="BACKUP of SQLite failed, check logfile: "+self.userIndigoPluginDir+"backup.log")
@@ -2197,26 +2224,28 @@ class Plugin(indigo.PluginBase):
 
 					if self.fixSQLStarted ==99: #  request to cancel
 						self.fixSQLStarted = 0
-						pids = subprocess.Popen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0] 
+						pids, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
 						if len(pids) >20:
 							pid = pids.split()
 							if len(pid)> 2 and int(pid[1]) >100:
-							   ret = subprocess.Popen("kill -9 "+str(pid[1]),stdout = subprocess.PIPE,stderr = subprocess.PIPE, shell = True).communicate()
-							   if len(ret[1]) >0:
+								ret, err = self.readPopen("kill -9 "+str(pid[1]))
+								if len(err) >0:
 									self.ML.myLog( text="FIX of SQLite cancel reqquest job failed")
 									continue
-							   self.ML.myLog( text="FIX of SQLite cancel request done")
+								self.ML.myLog( text="FIX of SQLite cancel request done")
 						else:      
 							self.ML.myLog( text="FIX of SQLite cancel request: job is already gone")
 						continue
-							   
-					if len(subprocess.Popen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0])>20: 
+								
+					ret, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
+					if len(ret)>20: 
 						if loopCounter %50 ==0:
 							self.ML.myLog( text="FIX of SQLite still running, check ~/indigo/Utilities/backup.log/  for detailed info")
 						self.fixSQLStarted =2
 						continue
 					if self.fixSQLStarted ==1: #  request to start job 
-						if len(subprocess.Popen("ps -ef | grep 'SQL Logger.indigoPlugin' | grep -v grep ", stdout = subprocess.PIPE, shell = True).communicate()[0])>20: 
+						ret, err = self.readPopen("ps -ef | grep 'SQL Logger.indigoPlugin' | grep -v grep ")
+						if len(ret)>20: 
 							self.ML.myLog( text="FIX SQL not started, please shutdown sql logger first")
 							continue                    
 						self.executeSQL([],0,0,"fix")
@@ -2245,9 +2274,8 @@ class Plugin(indigo.PluginBase):
 
 
 			self.stopConcurrentCounter = 1
-		except  Exception, e:
-			if len(unicode(e)) > 5:
-				self.ML.myLog( text="error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 		return
 
 ####----------------- trigger stuff for bad backup  ---------
@@ -2297,9 +2325,9 @@ class Plugin(indigo.PluginBase):
 			if time.time() - self.lastcpuTemp < float(self.cpuTempFreq): return
 			self.lastcpuTemp  = time.time()
 		
-			data = subprocess.Popen("'"+self.pathToPlugin+"osx-temp-fan'",shell=True,stdout=subprocess.PIPE).communicate()
+			ret, err = self.readPopen("'"+self.pathToPlugin+"osx-temp-fan'")
 			#self.ML.myLog( text=" data fan:"+unicode(data) )
-			data = data[0].strip("\n").split("\n")
+			data = ret.strip("\n").split("\n")
 			for line in data:
 				ll = line.split(":")
 				if len(ll) < 2: continue
@@ -2316,9 +2344,8 @@ class Plugin(indigo.PluginBase):
 					except:   indigo.variable.create(ll[0])
 					indigo.variable.updateValue(ll[0], ll[1])
 
-		except  Exception, e:
-			if len(unicode(e)) > 5:
-				self.ML.myLog( text="error in  Line '%s' ;  error='%s'" % (sys.exc_traceback.tb_lineno, e), errorType="smallErr")
+		except  Exception as e:
+			self.exceptionHandler(40,e)
 
 
 	#################################
@@ -2334,7 +2361,7 @@ class Plugin(indigo.PluginBase):
 			f.write(out)
 			f.close()
 		except	Exception as e:
-			indigo.server.log(u"cLine {} has error={}".format(sys.exc_info()[-1].tb_lineno, e))
+			self.exceptionHandler(40,e)
 		return
 
 
@@ -2351,7 +2378,8 @@ class Plugin(indigo.PluginBase):
 			f.close()
 			data = json.loads(raw)
 		except	Exception as e:
-			indigo.server.log(u"Line {} has error={}, fname:{}, data:{}".format(Gsys.exc_info()[-1].tb_lineno, e, fName, raw ))
+			self.exceptionHandler(40,e)
+			indigo.server.log(u"fname:{}, data:{}".format(fName, raw ))
 			return {}, ""
 		return data, raw
 
@@ -2360,4 +2388,36 @@ class Plugin(indigo.PluginBase):
 		if len(inPath) == 0: return ""
 		if inPath == " ":	 return ""
 		if inPath[-1] !="/": inPath +="/"
+
+
+
+####-------------------------------------------------------------------------####
+	def readPopen(self, cmd):
+		try:
+			ret, err = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+			return ret.decode('utf_8'), err.decode('utf_8')
+		except Exception as e:
+			self.exceptionHandler(40,e)
+
+####-----------------  exception logging ---------
+	def exceptionHandler(self, level, exception_error_message):
+
+		try:
+			try: 
+				if u"{}".format(exception_error_message).find("None") >-1: return exception_error_message
+			except: 
+				pass
+
+			filename, line_number, method, statement = traceback.extract_tb(sys.exc_info()[2])[-1]
+			#module = filename.split('/')
+			log_message = "'{}'".format(exception_error_message )
+			log_message +=  "\n{} @line {}: '{}'".format(method, line_number, statement)
+			if level > 0:
+				self.errorLog(log_message)
+			return "'{}'".format(log_message )
+		except Exception as e:
+			indigo.server.log( "{}".format(e))
+
+
+
 

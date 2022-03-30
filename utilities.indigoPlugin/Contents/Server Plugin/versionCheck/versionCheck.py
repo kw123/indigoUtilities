@@ -2,6 +2,11 @@ from distutils.version import LooseVersion
 import datetime
 import requests
 import sys
+try:
+	unicode("x")
+except:
+	unicode = str
+
 def versionCheck(pluginId,pluginVersion,indigo,theHourToCheckversion,theMinuteToCheckversion, printToLog="no",force =False):
     global lastDayversionCheck
     dd =  datetime.datetime.now()
@@ -43,9 +48,9 @@ def versionCheck(pluginId,pluginVersion,indigo,theHourToCheckversion,theMinuteTo
                         indigo.server.log("the version of the plugin is up to date; version on server:{}".format(latest_release["number"]) )
             return latest_release["number"]
         return latest_release
-    except  Exception, e:
+    except  Exception as e:
         if printToLog =="log":
-            indigo.server.log("version_check:  Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+            indigo.server.log("version_check:  Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
     return ""
 ### print versionCheck("com.karlwachs.pibeacon","1.2.3",printToLog="print" )
 

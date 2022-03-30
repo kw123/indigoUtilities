@@ -4,6 +4,10 @@
 import time, datetime
 import sys, subprocess, os, pwd
 import operator
+try:
+	unicode("x")
+except:
+	unicode = str
 
 ####----------------- print to logfile if > debuglevel ---------
 def myLog(debug,text):

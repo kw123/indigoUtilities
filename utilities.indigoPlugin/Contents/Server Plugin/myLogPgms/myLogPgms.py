@@ -7,6 +7,10 @@ import sys
 import datetime
 import time
 
+try:
+	unicode("x")
+except:
+	unicode = str
 
 
 class MLX():
@@ -20,27 +24,16 @@ class MLX():
 
 
 ####-----------------  set paramete rs ---------
-	def myLogSet(self, **kwargs ):# eg (debugLevel = "abc",logFileActive=True/False ,logFile = "pathToLogFile",	 maxFileSize = 10000000)
-		for key, value in kwargs.iteritems():
-			try:
-				if key == "logFileActive":
-					self.logFileActive	  = value
-			
-				elif key == "logFile":
-					self.logFile	= value
-			
-				elif key == "debugLevel":
-					self.debugLevel		= value
-
-				elif key == "maxFileSize" :
-					self.maxFileSize	 = int(value)
-					
-				elif key == "pluginSelf" :
-					self.plugin		= value
-					
-			except	Exception, e:
-				if len(unicode(e)) > 5:
-					indigo.server.log(u"in Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+	def myLogSet(self, debugLevel, logFileActive, logFile , pluginSelf):# eg (debugLevel = "abc",logFileActive=True/False ,logFile = "pathToLogFile",	 maxFileSize = 10000000)
+		try:
+			self.logFileActive	 = logFileActive
+			self.logFile		= logFile
+			self.debugLevel		= debugLevel
+			self.maxFileSize	= 100000
+			self.plugin			= pluginSelf
+		except	Exception as e:
+			if len(unicode(e)) > 5:
+				indigo.server.log(u"in Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 		self.myLog( text="myLogSet setting parameters -- logFileActive= "+ unicode(self.logFileActive) + "; logFile= "+ unicode(self.logFile)+ ";  debugLevel= "+ unicode(self.debugLevel) +"; maxFileSize= "+ unicode(self.maxFileSize), destination="standard")
 
 
@@ -61,9 +54,9 @@ class MLX():
 						os.rename(fn + ".log", fn + "-2.log")
 						os.remove(fn + "-1.log")
 					os.rename(fn + ".log", fn + "-1.log")
-		except	Exception, e:
+		except	Exception as e:
 			if len(unicode(e)) > 5:
-				indigo.server.log( u"checkLogFiles in Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+				indigo.server.log( u"checkLogFiles in Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 			
 			
 ####-----------------	 ---------
@@ -73,9 +66,9 @@ class MLX():
 			if msgLevel	 == ""	 and u"all" not in self.debugLevel:	 return False
 			if msgLevel in self.debugLevel:							 return True
 			return False
-		except	Exception, e:
+		except	Exception as e:
 			if len(unicode(e)) > 5:
-				indigo.server.log( u"decideMyLog in Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+				indigo.server.log( u"decideMyLog in Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 		return False
 
 ####-----------------  print to logfile or indigo log  ---------
@@ -109,8 +102,8 @@ class MLX():
 				try:
 					if len(self.logFile) < 3: return # not properly defined
 					f =	 open(self.logFile,"a")
-				except	Exception, e:
-					indigo.server.log(u"in Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+				except	Exception as e:
+					indigo.server.log(u"in Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 					try:
 						f.close()
 					except:
@@ -143,9 +136,9 @@ class MLX():
 				return
 
 
-		except	Exception, e:
+		except	Exception as e:
 			if len(unicode(e)) > 5:
-				indigo.server.log(u"myLog in Line '%s' has error='%s'" % (sys.exc_traceback.tb_lineno, e))
+				indigo.server.log(u"myLog in Line '%s' has error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 				indigo.server.log(text)
 				try: f.close()
 				except: pass
