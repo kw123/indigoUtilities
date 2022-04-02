@@ -27,172 +27,70 @@
         
         </ConfigUI>
     </MenuItem>
-    
-    <MenuItem id="menu5-1">
-        <Name>Print devices and variables IDs and names to INDIGO log</Name>
-        <CallbackMethod>inpPrintdevNamesIds</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="menu5-2">
-        <Name>Print States of all devices and variables to INDIGO log</Name>
-        <CallbackMethod>inpPrintdevStates</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="menu5-3">
-        <Name>Print zWave info: to log and file ~/documents/indigoUtilities/zWave.dot zwave.svg (Graphviz output)</Name>
-        <CallbackMethod>inpPrintdevzWave</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="menu5-5">
-        <Name>Print All Trigers and triggeringing devices and variables INDIGO log</Name>
-        <CallbackMethod>inpPrintTriggers</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="SQLbackup">
-        <Name>Create and test a backup of the SQLITE db, check logfile for result</Name>
-        <CallbackMethod>executeBACKUP</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="SQLpostgresBackup">
-        <Name>Create dumpfile.zip of the postgres db  in indigoUtilities directory</Name>
-        <CallbackMethod>executeBACKUPpostgres</CallbackMethod>
-    </MenuItem>
-    <MenuItem id="IndigoBackup">
-        <Name>Create a backup of the indigo config files and config database in indigoUtilities directory</Name>
-        <CallbackMethod>executeBACKUPindigo</CallbackMethod>
-    </MenuItem>
-    
-    <MenuItem id="fixSQL">
-        <Name>Fix SQLITE db (check logfile for result and follow step in logfile)</Name>
-          <CallbackMethod>executeFIX</CallbackMethod>
-    </MenuItem>
+  
 
-    <MenuItem id="fixSQLCancel">
-        <Name>Fix SQLITE ... CANCEL job</Name>
-          <CallbackMethod>executeFIXCancel</CallbackMethod>
-    </MenuItem>
-    
-    <MenuItem id="deleteDBrecords">
-        <Name>Delete duplicate records in SQL Database</Name>
-        <ConfigUI>
-            <Field  id="infoLabel1"
-                    type="label">
-                    <Label>Delete records with same timestamp (keep last record) in SQL database</Label>
-            </Field>
-            <Field  id="infoLabel2"
-                    type="label">
-                    <Label>if you use  SQLITE please DISABLE SQL-LOGGER FIRST IN INDIGO before running, enable after finished</Label>
-            </Field>
-            <Field  id="execOrTest"
-                    type="menu"
-                    defaultValue="test"
-                    tooltip="">
-                    <Label> select execution mode:</Label>
-                    <List>
-                        <Option value="test" >test only, create proposed SQL statements to file squeezeSQL in documents indigoutilities directory </Option>
-                        <Option value="exec" >execute deletions </Option>
-                        <Option value="execquiet" >execute deletions without logging details </Option>
-                        <Option value="stop" >stop current delete job</Option>
-                        <Option value="doNothing" >do nothing</Option>
-                    </List>
-            </Field>
-            <Field  id="execute"
-                    type="button"	>
-                    <Label> ....after selection click</Label><Title>EXECUTE</Title> 
-                    <CallbackMethod>executeDatabaseSqueeze</CallbackMethod>
-            </Field>
+     <MenuItem id="printStuff">
+		<Name>Print Stuff</Name>
+		<ConfigUI>
+			<Field
+				id="infoLabel1"
+				type="label">
+				<Label>Click on   &lt;PRINT&gt;   to print the selected item to indigo log </Label>
+			</Field>
+			<Field id="menu-1" type="button" >
+				<Label>Devices and variables IDs and names</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>inpPrintdevNamesIds</CallbackMethod>
+			</Field>
+
+			<Field id="menu-2" type="button" >
+				<Label>States of all devices and variables</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>inpPrintdevStates</CallbackMethod>
+			</Field>
+
+			<Field  id="menu-3" type="button" >
+				<Label>zWave ~/documents/indigoUtilities/zWave.dot zwave.svg (Graphviz)</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>inpPrintdevzWave</CallbackMethod>
+			</Field>
+
+			<Field  id="menu-4" type="button" >
+				<Label>All Trigers and triggeringing devices and variables</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>inpPrintTriggers</CallbackMethod>
+			</Field>
+
+			<Field  id="menu-5" type="button" >
+			  <Label>Number of records in DB for each device and variable</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>executePrintNumberOfRecords</CallbackMethod>
+			</Field>
+
+			<Field id="menu-6" type="button" >
+				<Label>Plugin Names, IDs, mem, cpu,v, subprocs,..</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printPluginidNamestoLogfile</CallbackMethod>
+			</Field>
+
+			<Field  id="menu-7" type="button" >
+				<Label>Powermetrics info</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printPowermetrics</CallbackMethod>
+			</Field>
+
+			<Field  id="menu-8" type="button" >
+				<Label>MAC cpu and fan temperatures (not for M1-MACs)</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printMACtemperatures</CallbackMethod>
+			</Field>
+
+
         </ConfigUI>
     </MenuItem>
-    <MenuItem id="pruneDevsandVars">
-        <Name>Prune individual devices and variables in SQLlogger</Name>
-        <ConfigUI>
-            <Field  id="devOrVar"
-                    type="menu"
-                    defaultValue="dev"
-                    tooltip="">
-                    <Label>device or variable:</Label>
-                    <List>
-                        <Option value="dev" >device </Option>
-                        <Option value="var" >variable</Option>
-                    </List>
-            </Field>
-            <Field
-                    id="variable"
-                    visibleBindingId="devOrVar"
-                    visibleBindingValue="var"
-                    type="menu"
-                    tooltip="you have to click on your choice to signal your entry" >
-                    <Label>Select  Variable:</Label>
-                    <List class="indigo.variables" filter=""  dynamicReload="true"/>
-                    <CallbackMethod>pickVariableCALLBACK</CallbackMethod>
-            </Field>
-                
-            <Field
-                    id="device"
-                    visibleBindingId="devOrVar"
-                    visibleBindingValue="dev"
-                    type="menu"
-                    tooltip="you have to click on your choice to signal your entry" >
-                    <Label>Select  Device:</Label>
-                    <List class="self" filter="" method="filterDevices" dynamicReload="true"/>
-                    <CallbackMethod>pickDeviceCALLBACK</CallbackMethod>
-            </Field>
-
-            <Field  id="deleteBeforeThisDays"
-                    type="menu"
-                    defaultValue="186"
-                    tooltip="">
-                    <Label> keep how much data:</Label>
-                    <List>
-                        <Option value="1" > 1 day</Option>
-                        <Option value="2" > 2 days</Option>
-                        <Option value="3" > 3 days</Option>
-                        <Option value="4" > 4 days</Option>
-                        <Option value="5" > 5 days</Option>
-                        <Option value="6" > 6 days</Option>
-                        <Option value="7" > 1 week</Option>
-                        <Option value="14" > 2 weeks</Option>
-                        <Option value="21" > 3 weeks</Option>
-                        <Option value="31" > 1 month</Option>
-                        <Option value="62" > 2 months</Option>
-                        <Option value="93" > 3 months</Option>
-                        <Option value="124" > 4 months</Option>
-                        <Option value="155" > 5 months</Option>
-                        <Option value="186" > 6 months</Option>
-                    </List>
-            </Field>
-            <Field  id="test"
-                    type="button"	>
-                    <Label> ....after selection click</Label><Title>TEST</Title> 
-                    <CallbackMethod>executePruneDatabaseTEST</CallbackMethod>
-            </Field>
-            <Field  id="execute"
-                    type="button"	>
-                    <Label> ....after selection click</Label><Title>EXECUTE</Title> 
-                    <CallbackMethod>executePruneDatabase</CallbackMethod>
-            </Field>
-        </ConfigUI>
-    </MenuItem>
-
-
-    <MenuItem id="printNumberOfRecords">
-    <Name>Print number of records in DB for each device and variable to INDIGO log</Name>
-        <CallbackMethod>executePrintNumberOfRecords</CallbackMethod>
-    </MenuItem>
-
-    <MenuItem id="printPluginidNamestoLogfile">
-    <Name>Print plugin Names, IDs, mem, cpu,v, subprocs,..  to INDIGO log</Name>
-        <CallbackMethod>printPluginidNamestoLogfile</CallbackMethod>
-    </MenuItem>
-
-
-    <MenuItem id="printmakepluginDateList">
-    <Name>Print plugin VERSION list from indigo Store for your active plugin, can run once a day</Name>
-        <CallbackMethod>printmakepluginDateList</CallbackMethod>
-    </MenuItem>
-
-
-    <MenuItem id="printMACtemperatures">
-    <Name>print MAC cpu and fan temperatures to log</Name>
-        <CallbackMethod>printMACtemperatures</CallbackMethod>
-    </MenuItem>
-
-
+  
+  
+  
 
     <MenuItem id="printDeviceStates">
     <Name>Retrieve (records) from SQLite/postGRES:  Variable or Device/State(s),  printed to (log)file</Name>
@@ -442,5 +340,133 @@
 
         </ConfigUI>
     </MenuItem>
+
+
+    <MenuItem id="SQLbackup">
+        <Name>Create and test a backup of the SQLITE db, check logfile for result</Name>
+        <CallbackMethod>executeBACKUP</CallbackMethod>
+    </MenuItem>
+    <MenuItem id="SQLpostgresBackup">
+        <Name>Create dumpfile.zip of the postgres db  in indigoUtilities directory</Name>
+        <CallbackMethod>executeBACKUPpostgres</CallbackMethod>
+    </MenuItem>
+    <MenuItem id="IndigoBackup">
+        <Name>Create a backup of the indigo config files and config database in indigoUtilities directory</Name>
+        <CallbackMethod>executeBACKUPindigo</CallbackMethod>
+    </MenuItem>
+    
+    <MenuItem id="fixSQL">
+        <Name>Fix SQLITE db (check logfile for result and follow step in logfile)</Name>
+          <CallbackMethod>executeFIX</CallbackMethod>
+    </MenuItem>
+
+    <MenuItem id="fixSQLCancel">
+        <Name>Fix SQLITE ... CANCEL job</Name>
+          <CallbackMethod>executeFIXCancel</CallbackMethod>
+    </MenuItem>
+    
+    <MenuItem id="deleteDBrecords">
+        <Name>Delete duplicate records in SQL Database</Name>
+        <ConfigUI>
+            <Field  id="infoLabel1"
+                    type="label">
+                    <Label>Delete records with same timestamp (keep last record) in SQL database</Label>
+            </Field>
+            <Field  id="infoLabel2"
+                    type="label">
+                    <Label>if you use  SQLITE please DISABLE SQL-LOGGER FIRST IN INDIGO before running, enable after finished</Label>
+            </Field>
+            <Field  id="execOrTest"
+                    type="menu"
+                    defaultValue="test"
+                    tooltip="">
+                    <Label> select execution mode:</Label>
+                    <List>
+                        <Option value="test" >test only, create proposed SQL statements to file squeezeSQL in documents indigoutilities directory </Option>
+                        <Option value="exec" >execute deletions </Option>
+                        <Option value="execquiet" >execute deletions without logging details </Option>
+                        <Option value="stop" >stop current delete job</Option>
+                        <Option value="doNothing" >do nothing</Option>
+                    </List>
+            </Field>
+            <Field  id="execute"
+                    type="button"	>
+                    <Label> ....after selection click</Label><Title>EXECUTE</Title> 
+                    <CallbackMethod>executeDatabaseSqueeze</CallbackMethod>
+            </Field>
+        </ConfigUI>
+    </MenuItem>
+    <MenuItem id="pruneDevsandVars">
+        <Name>Prune individual devices and variables in SQLlogger</Name>
+        <ConfigUI>
+            <Field  id="devOrVar"
+                    type="menu"
+                    defaultValue="dev"
+                    tooltip="">
+                    <Label>device or variable:</Label>
+                    <List>
+                        <Option value="dev" >device </Option>
+                        <Option value="var" >variable</Option>
+                    </List>
+            </Field>
+            <Field
+                    id="variable"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="var"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Variable:</Label>
+                    <List class="indigo.variables" filter=""  dynamicReload="true"/>
+                    <CallbackMethod>pickVariableCALLBACK</CallbackMethod>
+            </Field>
+                
+            <Field
+                    id="device"
+                    visibleBindingId="devOrVar"
+                    visibleBindingValue="dev"
+                    type="menu"
+                    tooltip="you have to click on your choice to signal your entry" >
+                    <Label>Select  Device:</Label>
+                    <List class="self" filter="" method="filterDevices" dynamicReload="true"/>
+                    <CallbackMethod>pickDeviceCALLBACK</CallbackMethod>
+            </Field>
+
+            <Field  id="deleteBeforeThisDays"
+                    type="menu"
+                    defaultValue="186"
+                    tooltip="">
+                    <Label> keep how much data:</Label>
+                    <List>
+                        <Option value="1" > 1 day</Option>
+                        <Option value="2" > 2 days</Option>
+                        <Option value="3" > 3 days</Option>
+                        <Option value="4" > 4 days</Option>
+                        <Option value="5" > 5 days</Option>
+                        <Option value="6" > 6 days</Option>
+                        <Option value="7" > 1 week</Option>
+                        <Option value="14" > 2 weeks</Option>
+                        <Option value="21" > 3 weeks</Option>
+                        <Option value="31" > 1 month</Option>
+                        <Option value="62" > 2 months</Option>
+                        <Option value="93" > 3 months</Option>
+                        <Option value="124" > 4 months</Option>
+                        <Option value="155" > 5 months</Option>
+                        <Option value="186" > 6 months</Option>
+                    </List>
+            </Field>
+            <Field  id="test"
+                    type="button"	>
+                    <Label> ....after selection click</Label><Title>TEST</Title> 
+                    <CallbackMethod>executePruneDatabaseTEST</CallbackMethod>
+            </Field>
+            <Field  id="execute"
+                    type="button"	>
+                    <Label> ....after selection click</Label><Title>EXECUTE</Title> 
+                    <CallbackMethod>executePruneDatabase</CallbackMethod>
+            </Field>
+        </ConfigUI>
+    </MenuItem>
+
+
 
 </MenuItems>

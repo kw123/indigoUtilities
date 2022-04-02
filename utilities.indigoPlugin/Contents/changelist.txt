@@ -1,3 +1,14 @@
+Added features / changes in v2.19.36 @ 2022-4-02
+===================================================
+
+1. fixed unicode issue
+2. added option to print powermetrics info
+3. clean up menu list
+
+
+
+
+
 Added features / changes in v2.19.32 @ 2022-3-30
 ===================================================
 

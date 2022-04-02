@@ -25,6 +25,20 @@
 
 
     <Field
+        id="infoLabelperf"
+        type="label">
+        <Label>== set yiour password, if you want to use "powermetrics" </Label>
+    </Field>
+
+    <Field
+        id="yourPassword"
+        type="textfield">
+        <Label>enter your mac password to lauch cmd line utility</Label>
+    </Field>
+
+
+
+    <Field
         id="infoLabelLang"
         type="label">
         <Label>== For language /char encoding, to get your type: "locale" in terminal  
@@ -71,11 +85,13 @@
         type="label">
         <Label>== MAC temperature and fan speed measurements...</Label>
     </Field>
-    <Field
+ 
+ 
+   <Field
         id="cpuTempFreq"
         type="menu"
         defaultValue="" >
-        <Label>Enable MAC cpu temp and fan speed variable populations:</Label>
+        <Label>Enable MAC cpu temp and "powermetrics" speed variable populations:</Label>
         <List>
             <Option value=""    >off</Option>
             <Option value="20"  >check every 20 secs</Option>

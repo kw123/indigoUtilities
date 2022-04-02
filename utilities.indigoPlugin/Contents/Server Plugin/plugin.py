@@ -21,6 +21,7 @@ except:
 
 import codecs
 
+
 '''
 options:
 A) print all devices / states and variables / states
@@ -47,7 +48,6 @@ immport into new sqlite db .compressed
 run a test query select * from variable_history_12345 against the new db
 
 '''
-
 
 ################################################################################
 class Plugin(indigo.PluginBase):
@@ -101,6 +101,7 @@ class Plugin(indigo.PluginBase):
 			os.mkdir(self.indigoPreferencesPluginDir)
 		self.indigoLogPluginDir 		= self.getInstallFolderPath+"Logs/Plugins/"+self.pluginId+"/"
 		
+		self.yourPassword	      		= self.pluginPrefs.get(		"yourPassword")
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
 		self.enccodingChar      		= self.pluginPrefs.get(		"enccodingChar","utf-8")
 		self.userName           		= pwd.getpwuid( os.getuid() )[ 0 ]
@@ -153,9 +154,9 @@ class Plugin(indigo.PluginBase):
 		self.postgresBackupStarted =0
 		self.lastVersionCheck = -1
 
-		self.cpuTempFreq   = self.pluginPrefs.get(		"cpuTempFreq",	"0")
-		self.cpuTempUnit   = self.pluginPrefs.get(		"cpuTempUnit",	"0")
-		self.cpuTempFormat = self.pluginPrefs.get(		"cpuTempFormat",	"%.1f")
+		self.cpuTempFreq   = self.pluginPrefs.get("cpuTempFreq",	"0")
+		self.cpuTempUnit   = self.pluginPrefs.get("cpuTempUnit",	"0")
+		self.cpuTempFormat = self.pluginPrefs.get("cpuTempFormat",	"%.1f")
 		self.lastcpuTemp   = 0
 		self.getDebugLevels()
 		
@@ -229,6 +230,8 @@ class Plugin(indigo.PluginBase):
 			if valuesDict[u"debug"+d]: self.debugLevel.append(d)
 
 		self.setLogfile(valuesDict[u"logFileActive2"])
+		self.yourPassword		= valuesDict[u"yourPassword"]
+
 		self.localeLanguage     = valuesDict[u"localeLanguage"]
 		self.enccodingChar      = valuesDict[u"enccodingChar"]
 		self.liteOrPsql			= valuesDict["liteOrPsql"]
@@ -262,7 +265,7 @@ class Plugin(indigo.PluginBase):
 
 
 ####-----------------  print dev var names and id's ---------
-	def inpPrintdevNamesIds(self):
+	def inpPrintdevNamesIds(self, menuId="", xx=""):
 
 
 		indigo.server.log(u"\n                 ============== Print variables and devices names/ids logfile =============" ," ")
@@ -308,7 +311,7 @@ class Plugin(indigo.PluginBase):
 
 
 ####-----------------  print device / variable states .. ---------
-	def printmakepluginDateList(self):
+	def printmakepluginDateList(self, menuId="", xx=""):
 		self.taskList +="makepluginDateList"
 		return
 
@@ -428,31 +431,51 @@ class Plugin(indigo.PluginBase):
 
 
 
+####-----------------  print device / variable states .. ---------
+	def printPowermetrics(self, menuId="", xx=""):
 
+		if len(self.yourPassword) <3:
+			indigo.server.log(u"print powermetrics info to logfile password not set in config" )
+
+		else: 
+			indigo.server.log(u"print powermetrics info to logfile, this will take about 5 sec using: (pwd = your password)" )
+			indigo.server.log(u"echo 'pwd' | sudo -S  /usr/bin/powermetrics -i 10 --format text  & /bin/sleep 8; echo 'pwd' | sudo -S  /usr/bin/killall -9 powermetrics" )
+			cmd = u"echo '{}' | sudo -S  /usr/bin/powermetrics -i 6 --format text  & /bin/sleep 5; echo '{}' | sudo -S  /usr/bin/killall -9 powermetrics".format(self.yourPassword, self.yourPassword)
+			ret, err = self.readPopen(cmd)
+			theLines = ret.split("Running tasks")[1]
+			indigo.server.log(theLines)
+
+		return 
+		
 
 ####-----------------  print device / variable states .. ---------
 	def printMACtemperaturesAction(self, action,typeId="",devId=""):
 		self.printMACtemperatures()
 		
 ####-----------------  print device / variable states .. ---------
-	def printMACtemperatures(self):
-		out ="\nTemperatures and fan speeds of indigo MAC \n"
+	def printMACtemperatures(self, menuId="", xx=""):
 		ret, err = self.readPopen("'"+self.pathToPlugin+"osx-temp-fan'")
+
+		out = u""
 		ll = ret.strip("\n")
 		for line in ll.split("\n"):
 			if line.find("-99") >-1: continue
 			items = line.split(":")
 			if len(items) !=2:       continue
-			if items[0].find("fan") >-1: 
-				val = items[1].split(".")[0]+"[r/m]" # only integer part
+			if items[0].find("fan") > -1: 
+				val = u"{}[r/m]".format(items[1].split(".")[0]) # only integer part
 			else:                        
 				t = float(items[1])
 				if self.cpuTempUnit == "F": 
-					val = "%.1f"%(t*9./5 +32)+"[ºF]"
+					val = u"{%.1f}[ºF]".format(t*9./5 +32)
 				else:
-					val ="%.1f"%t +"[ºC]"
-			out += (items[0]+":").ljust(30)+ val +"\n"
-		indigo.server.log(out)
+					val = u"{:.1f}[ºC]".format(t)
+			out += u"{:30}:{}\n".format(items[0], val)
+		if out !="":
+			indigo.server.log(u"\nTemperatures and fan speeds of indigo MAC \n"+out)
+		else:
+			indigo.server.log(u"raw data fan temp .. info (-99=not available)\n{}".format(ret) )
+
 		return
 		
 
@@ -461,7 +484,7 @@ class Plugin(indigo.PluginBase):
 		self.printPluginidNamestoLogfile()
 		
 ####-----------------  print device / variable states .. ---------
-	def printPluginidNamestoLogfile(self):
+	def printPluginidNamestoLogfile(self, menuId="", xx=""):
 
 		indigo.server.log("starting print plugin names, id, mem cpu  daughter processes . . . takes a little time,  using lsof, ps -ef, ps aux")
 		psaux  = self.getPSAUX()
@@ -477,7 +500,7 @@ class Plugin(indigo.PluginBase):
 		fileList = self.getOpenFiles()
 		plugList = self.getActivePlugins(psef)
 		
-		out=["\n    PID    CPU-total  Mem-% -Virt -Real  version       pluginName ------------------------  .. + sub processes and non std open files \n"]
+		out = [U"\n    PID    CPU-total  Mem-% -Virt   -Real   version    pluginName ------------------------  .. + sub processes and non std open files \n"]
 		for plID in  plugList:
 			item = plugList[plID]
 			try:
@@ -486,9 +509,9 @@ class Plugin(indigo.PluginBase):
 				pCPU    = item["cpu"]
 				pID     = item["pid"]
 				version = item["version"]
-				if pID in memList:    mem = memList[pID][0].rjust(6)+memList[pID][1].rjust(6)+memList[pID][2].rjust(6)
-				else:                 mem = " ".rjust(18)
-				out.append(pID.rjust(7)+"  "+pCPU.rjust(11)+" "+mem+"  "+version.ljust(10)+"   "+ pName +"\n")
+				if pID in memList:    mem = u"{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+				else:                 mem = u" ".rjust(18)
+				out.append( u"{:>7}{:>11}    {}  {:10} {}\n".format(pID, pCPU, mem, version, pName) )
 				ret2 = []
 				for line in psef.split("\n"):
 					if (" "+pID+" ") not in line: continue
@@ -500,13 +523,13 @@ class Plugin(indigo.PluginBase):
 					name = items2["name"]
 					if len(name) < 10: continue
 					dCPU = items2["cpu"]
-					doughterProcess= "             SubProcess: "+name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ...")
-					if pID in memList:    mem = memList[pID][0].rjust(6)+memList[pID][1].rjust(6)+memList[pID][2].rjust(6)
-					else:                 mem = " ".rjust(18)
-					out.append( dPID.rjust(7)+"  "+dCPU.rjust(11)+" "+mem+"   "+ doughterProcess+"\n")
+					doughterProcess= u"            SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
+					if pID in memList:	mem = u"{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+					else:				mem = " ".rjust(18)
+					out.append( u"{:>7}{:>11}    {}  {}\n".format(dPID, dCPU, mem, doughterProcess))
 				if pID in fileList and len(fileList[pID]) > 0:
 					for ff in fileList[pID]:
-						out.append(" ".ljust(7+2+11+1+19+2)+"             openFile:   "+ff+"\n")                
+						out.append( u"{:42}              openFile:{}\n".format(" ",ff))
 			except  Exception as e:
 				self.exceptionHandler(40,e)
 		indigo.server.log("".join(out))
@@ -514,7 +537,7 @@ class Plugin(indigo.PluginBase):
 
 
 ####-----------------  print device / variable states .. ---------
-	def makepluginDateList(self):
+	def makepluginDateList(self, menuId="", xx=""):
 
 			self.taskList =""
 			psef  = self.getPSEF(grep="ndigo")
@@ -535,13 +558,13 @@ class Plugin(indigo.PluginBase):
 				exVersion ="not available" 
 				if item["version"].find("no") ==-1:
 					exVersion =   VS.versionCheck(plID,"0.0.0",indigo,0,0, printToLog="no",force =True)
-				self.ML.myLog( text=pName.ljust(35)+str(version).ljust(20)+str(exVersion))
+				self.ML.myLog( text=u"{:<35}{:<20}{}".format(pName, version, exVersion))
 				time.sleep(1.5)
 			self.ML.myLog( text="Plugin name -------------------    END")
 
 
 ####-----------------  print device / variable states .. ---------
-	def inpPrintTriggers(self):
+	def inpPrintTriggers(self, menuId="", xx=""):
 
 
 		triggers={}
@@ -642,12 +665,12 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log(u"\n                 ============== Print for each Trigger  devices/variables that trigger them      =============" ," ")
 		indigo.server.log("Trig.ID      Trig.SourceType Dev/Var/Plugin-ID           Source-D/V/P-Name         Other info", type="Trigger Name")
 		for tName in tList:
-			indigo.server.log(triggers[tName]["id"].ljust(12)+" "+triggers[tName]["type"].ljust(15)+" "+triggers[tName]["id2"].ljust(27)[-27:] +" "+  triggers[tName]["vdName"].ljust(25)[:25]+" "+  triggers[tName]["other"],type=tName[:30]  )
+			indigo.server.log(u"{:<12} {:<15} {} {} {}".format(triggers[tName]["id"], triggers[tName]["type"], triggers[tName]["id2"].ljust(27)[-27:], triggers[tName]["vdName"].ljust(25)[:25], triggers[tName]["other"]), type=tName[:30]  )
 		return
 
 
 ####-----------------  print device / variable states .. ---------
-	def inpPrintdevzWave(self):
+	def inpPrintdevzWave(self, menuId="", xx=""):
 	
 	
 		indigo.server.log(u"\n                 ============== Print zwave info of devices to logfile =============" ," ")
@@ -658,10 +681,10 @@ class Plugin(indigo.PluginBase):
 				indigo.server.log(" zwave not working for device" + dev.name)
 				continue
 			if "zwNodeNeighborsStr" not in dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]: continue
-			neighb = unicode(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
+			neighb = u"{:}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
 			if len(neighb)< 1: continue
-			address= unicode(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"]).rjust(4)
-			nList.append((address,(dev.name+"-"+address).rjust(45)+":  "+neighb,str(dev.id)))
+			address = u"{:>4}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"])
+			nList.append((address, u"{:30}-{:15}: {}".format(dev.name, address, neighb), u"{}".format(dev.id)))
 		
 		indigo.server.log(("  --------------------------device Name -addr").rjust(40)+":  neighbors","Device ID")
 		nList=sorted(nList)
@@ -706,7 +729,7 @@ class Plugin(indigo.PluginBase):
 		return
 	
 ####-----------------  print device / variable states .. ---------
-	def inpPrintdevStates(self):
+	def inpPrintdevStates(self, menuId="", xx=""):
 
 
 		indigo.server.log(u"\n                 ============== Print variables and devices to logfile =============" ," ")
@@ -1042,7 +1065,7 @@ class Plugin(indigo.PluginBase):
 				factor    = max(0.01,deltaT/100.)
 				deltaCPU  = max(0, (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor )
 				totalDelta += deltaCPU
-				if self.ML.decideMyLog("Logic"): self.ML.myLog( text="plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
+				if self.ML.decideMyLog("Logic"): self.ML.myLog( text=u"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
 				if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
 					if self.ML.decideMyLog("Logic"): self.ML.myLog( text="triggering > threshold for "+plugID )
 					self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
@@ -2326,7 +2349,6 @@ class Plugin(indigo.PluginBase):
 			self.lastcpuTemp  = time.time()
 		
 			ret, err = self.readPopen("'"+self.pathToPlugin+"osx-temp-fan'")
-			#self.ML.myLog( text=" data fan:"+unicode(data) )
 			data = ret.strip("\n").split("\n")
 			for line in data:
 				ll = line.split(":")
