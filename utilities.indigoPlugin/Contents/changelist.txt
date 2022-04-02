@@ -1,4 +1,4 @@
-Added features / changes in v2.19.36 @ 2022-4-02
+Added features / changes in v2.19.37 @ 2022-4-02
 ===================================================
 
 1. fixed unicode issue
