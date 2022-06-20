@@ -1,4 +1,10 @@
-Added features / changes in v2.19.38 @ 2022-4-02
+Added features / changes in v2.19.38 @ 2022-06-20
+===================================================
+
+1. fixed @line 2209: 'lines = steps.strip("\n").split("\n")'
+
+
+Added features / changes in v2.19.37 @ 2022-4-02
 ===================================================
 
 1. fixed unicode issue

@@ -2206,7 +2206,7 @@ class Plugin(indigo.PluginBase):
 						ll= os.path.getsize(self.userIndigoPluginDir+"steps")
 						if ll==0: continue
 						ret, err = self.readPopen("cat '"+self.userIndigoPluginDir+"steps'")
-						lines = steps.strip("\n").split("\n")
+						lines = ret.strip("\n").split("\n")
 						nlines = len(lines)
 						if nlines == lastnlines: continue
 						for n in range(lastnlines, nlines):
