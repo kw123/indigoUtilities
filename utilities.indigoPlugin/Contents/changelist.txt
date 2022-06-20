@@ -1,4 +1,4 @@
-Added features / changes in v2.19.38 @ 2022-06-20
+Added features / changes in v2.19.39 @ 2022-06-20
 ===================================================
 
 1. fixed @line 2209: 'lines = steps.strip("\n").split("\n")'
