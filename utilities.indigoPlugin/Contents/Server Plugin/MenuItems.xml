@@ -4,7 +4,7 @@
 
 
     <MenuItem id="pingIpDevice">
-    <Name>Ping an IP device</Name>
+    <Name>Ping an IP device..</Name>
         <ConfigUI>
                 <Field
                     id="infoLabel1"
@@ -30,7 +30,7 @@
   
 
      <MenuItem id="printStuff">
-		<Name>Print Stuff</Name>
+		<Name>Print Stuff to log..</Name>
 		<ConfigUI>
 			<Field
 				id="infoLabel1"
@@ -86,14 +86,61 @@
 			</Field>
 
 
-        </ConfigUI>
+			<Field  id="menu-9" type="button" >
+				<Label>print reflector status to logfile</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printReflectorStatus</CallbackMethod>
+			</Field>
+
+
+			<Field  id="deviceIdForPrint" type="menu" >
+                    <Label>print device info to log, Select:</Label>
+                    <List class="indigo.devices" filter=""  dynamicReload="false"/>
+			</Field>
+			<Field  id="menu-10" type="button" >
+				<Label></Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printDeviceInfo</CallbackMethod>
+			</Field>
+
+			<Field  id="scheduleIdForPrint" type="menu" >
+                    <Label>print Schedule info to log, Select:</Label>
+                    <List class="indigo.schedules" filter=""  dynamicReload="false"/>
+			</Field>
+			<Field  id="menu-11" type="button" >
+				<Label></Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printScheduleInfo</CallbackMethod>
+			</Field>
+
+			<Field  id="triggerIdForPrint" type="menu" >
+                    <Label>print Trigger info to log, Select:</Label>
+                    <List class="indigo.triggers" filter=""  dynamicReload="false"/>
+			</Field>
+			<Field  id="menu-12" type="button" >
+				<Label></Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printTriggerInfo</CallbackMethod>
+			</Field>
+
+			<Field  id="actionGroupIdForPrint" type="menu" >
+                    <Label>print Action Group info to log, Select:</Label>
+                    <List class="indigo.actionGroups" filter=""  dynamicReload="false"/>
+			</Field>
+			<Field  id="menu-13" type="button" >
+				<Label></Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printActionGroupInfo</CallbackMethod>
+			</Field>
+
+       </ConfigUI>
     </MenuItem>
   
   
   
 
     <MenuItem id="printDeviceStates">
-    <Name>Retrieve (records) from SQLite/postGRES:  Variable or Device/State(s),  printed to (log)file</Name>
+    <Name>Retrieve (records) from SQLite/postGRES:  Variable or Device/State(s),  printed to (log)file..</Name>
         <ConfigUI>
                 <Field
                     id="infoLabel1"
@@ -366,7 +413,7 @@
     </MenuItem>
     
     <MenuItem id="deleteDBrecords">
-        <Name>Delete duplicate records in SQL Database</Name>
+        <Name>Delete duplicate records in SQL Database..</Name>
         <ConfigUI>
             <Field  id="infoLabel1"
                     type="label">
@@ -397,7 +444,7 @@
         </ConfigUI>
     </MenuItem>
     <MenuItem id="pruneDevsandVars">
-        <Name>Prune individual devices and variables in SQLlogger</Name>
+        <Name>Prune individual devices and variables in SQLlogger..</Name>
         <ConfigUI>
             <Field  id="devOrVar"
                     type="menu"

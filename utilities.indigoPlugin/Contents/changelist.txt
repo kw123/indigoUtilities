@@ -1,6 +1,13 @@
-Added features / changes in v2022.19.40 @ 2022-06-20
+Added features / changes in v2022.20.40 @ 2023-03-09
 ===================================================
 
+added menu options to print info to log for selected device, trigger, schedule, actionGroup
+ in menu: print stuff to log..
+
+
+
+Added features / changes in v2022.19.40 @ 2022-06-20
+===================================================
 
 switched everything to py3 
 

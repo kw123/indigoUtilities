@@ -263,6 +263,37 @@ class Plugin(indigo.PluginBase):
 		else:									self.logFile = self.indigoLogPluginDir +"plugin.log"
 		self.ML.myLogSet(debugLevel = self.debugLevel ,logFileActive=self.logFileActive, logFile = self.logFile, pluginSelf=self)
 
+####-----------------  print dev var names and id's ---------
+	def printReflectorStatus(self, menuId="", xx=""):
+		indigo.server.log("\n\nreflector status:{}\n".format(indigo.server.getReflectorStatus() ))
+
+
+
+####-----------------  print dev var names and id's ---------
+	def printDeviceInfo(self, menuId="", xx=""):
+		ID = int(menuId["deviceIdForPrint"])
+		indigo.server.log("Device:\n{}".format(indigo.devices[ID]))
+		return 
+
+####-----------------  print dev var names and id's ---------
+	def printScheduleInfo(self, menuId="", xx=""):
+		ID = int(menuId["scheduleIdForPrint"])
+		indigo.server.log("Schedule:\n{}".format(indigo.schedules[ID]))
+		return 
+
+
+####-----------------  print dev var names and id's ---------
+	def printTriggerInfo(self, menuId="", xx=""):
+		ID = int(menuId["triggerIdForPrint"])
+		indigo.server.log("Trigger:\n{}".format(indigo.triggers[ID]))
+		return 
+
+####-----------------  print dev var names and id's ---------
+	def printActionGroupInfo(self, menuId="", xx=""):
+		ID = int(menuId["actionGroupIdForPrint"])
+		indigo.server.log("Action Group:\n{}".format(indigo.actionGroups[ID]))
+		return 
+
 
 ####-----------------  print dev var names and id's ---------
 	def inpPrintdevNamesIds(self, menuId="", xx=""):
