@@ -132,7 +132,7 @@ class Plugin(indigo.PluginBase):
 			self.errorLog(u"FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping INDIGOplotD")
 			self.quitNOW = "none of python versions 2.7 3.x is installed "
 			return
-		indigo.server.log(u"using '" +self.pythonPath +"' for utily programs")
+		indigo.server.log(u"using '" +self.pythonPath +"' for utility programs")
 
 		self.PLUGINSusedForCPUlimts, raw = self.readJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json")
 		if len(raw) < 10: 
@@ -298,10 +298,13 @@ class Plugin(indigo.PluginBase):
 ####-----------------  print dev var names and id's ---------
 	def inpPrintdevNamesIds(self, menuId="", xx=""):
 
+		varcount = 0
+		devcount = 0
 
 		indigo.server.log(u"\n                 ============== Print variables and devices names/ids logfile =============" ," ")
 		listV=[]
 		for var in indigo.variables:
+			varcount += 1
 			listV.append((var.name,str(var.id)))
 		listV= sorted(listV)
 		nn=0
@@ -322,6 +325,7 @@ class Plugin(indigo.PluginBase):
 		listV=[]
 		indigo.server.log(u" "," ")
 		for dev in indigo.devices:
+			devcount += 1
 			listV.append((dev.name,str(dev.id)))
 		listV= sorted(listV)
 		nn=0
@@ -337,6 +341,9 @@ class Plugin(indigo.PluginBase):
 		if nn !=0:
 			line+=out+"\n"
 		indigo.server.log(line)
+
+		indigo.server.log("Number of variables: {}".format(varcount))
+		indigo.server.log("Number of devices: {}".format(devcount))
 
 		return
 
@@ -763,21 +770,26 @@ class Plugin(indigo.PluginBase):
 	def inpPrintdevStates(self, menuId="", xx=""):
 
 
+		varcount = 0
+		devcount = 0
 		indigo.server.log(u"\n                 ============== Print variables and devices to logfile =============" ," ")
 		indigo.server.log(("-----------------------------variables").rjust(40)+":  Value","Variable ID")
 		for var in indigo.variables:
+			varcount += 1
 			name=var.name
 			id=var.id
 			try:
 				val= var.value
 			except:
 				val=""
-			indigo.server.log(name.rjust(40)+":  "+unicode(val),str(id))
+			indigo.server.log(name.rjust(40)+":  "+str(val),str(id))
 
+		indigo.server.log("Number of variables: {}".format(varcount))
 
 		indigo.server.log(u"\n "," ")
 		indigo.server.log(("  ---------------------------device Name").rjust(40)+":  State(Value), State(Value), ...","Device ID")
 		for dev in indigo.devices:
+			devcount += 1
 			name=dev.name
 			id =str(dev.id)
 		
@@ -787,7 +799,7 @@ class Plugin(indigo.PluginBase):
 			for test in theStates:
 				val= dev.states[test]
 				count+=1
-				retList.append(test+"(\""+unicode(val)[:20]+"\"), ")
+				retList.append(test+"(\""+str(val)[:20]+"\"), ")
 			first= (name).rjust(40)+":  "
 			for ii in range(0,count,5):
 				out=""
@@ -797,6 +809,7 @@ class Plugin(indigo.PluginBase):
 				first= u" ".rjust(40)+":  "
 				id=" "
 
+		indigo.server.log("Number of devices: {}".format(devcount))
 		return
 
 

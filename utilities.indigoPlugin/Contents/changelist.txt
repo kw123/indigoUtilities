@@ -1,3 +1,10 @@
+Added features / changes in v2022.20.41 @ 2024-06-06
+===================================================
+
+number of devices and variables to print all devs and vars
+
+
+
 Added features / changes in v2022.20.40 @ 2023-03-09
 ===================================================
 
