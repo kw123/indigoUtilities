@@ -1,10 +1,9 @@
-Added features / changes in v2022.22.41 @ 2024-10-03
+Added features / changes in v2022.22.42 @ 2024-10-03
 ===================================================
 
-1. added menu and action options to print battery level f all devices to the indigo og.
-   you can select to only print bat level < xx %  (xx = 10,20..60%) to limit the amount of print out and only list tjose that need attebtion
+1. aadded menu and action options to print battery level of all devices to the indigo log.
+   you can select to only print bat level < xx %  (xx = 10,20..60%) to limit the amount of print out and only list those that need attention
    you can put the print into a schedule that runs once a day
-
 
 Added features / changes in v2022.21.41 @ 2024-06-06
 ===================================================
