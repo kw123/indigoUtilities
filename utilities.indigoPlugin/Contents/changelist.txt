@@ -1,8 +1,17 @@
-Added features / changes in v2022.20.41 @ 2024-06-06
+Added features / changes in v2022.22.41 @ 2024-10-03
 ===================================================
 
-number of devices and variables to print all devs and vars
+1. added menu and action options to print battery level f all devices to the indigo og.
+   you can select to only print bat level < xx %  (xx = 10,20..60%) to limit the amount of print out and only list tjose that need attebtion
+   you can put the print into a schedule that runs once a day
 
+
+Added features / changes in v2022.21.41 @ 2024-06-06
+===================================================
+
+1. added number of devices and variables to print all devs and vars
+2. added action to GRACEFULLY stop indigo client
+3. added action GRACEFULLY stop indigo and then reboot MAC 
 
 
 Added features / changes in v2022.20.40 @ 2023-03-09

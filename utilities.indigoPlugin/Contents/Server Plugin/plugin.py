@@ -295,6 +295,7 @@ class Plugin(indigo.PluginBase):
 		return 
 
 
+
 ####-----------------  print dev var names and id's ---------
 	def inpPrintdevNamesIds(self, menuId="", xx=""):
 
@@ -343,10 +344,20 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log(line)
 
 		indigo.server.log("Number of variables: {}".format(varcount))
-		indigo.server.log("Number of devices: {}".format(devcount))
+		indigo.server.log("Number of devices:   {}".format(devcount))
 
 		return
 
+####-----------------  print dev var names and id's ---------
+	def printDeviceBatterylevelsAction(self, action1={}, menuId=""):
+		valuesDict = action1.props
+		self.printDeviceBatterylevels( action1.props)
+		return
+####-----------------  print dev var names and id's ---------
+	def printDeviceBatterylevels(self, valuesDict={}, menuId=""):
+		self.taskList ="printBatterylevels;"+valuesDict.get("batteryLevelWhatToprint")
+		indigo.server.log("command: print battery levels  {}".format(self.taskList ))
+		return 
 
 ####-----------------  print device / variable states .. ---------
 	def printmakepluginDateList(self, menuId="", xx=""):
@@ -466,6 +477,102 @@ class Plugin(indigo.PluginBase):
 			self.exceptionHandler(40,e)
 				
 		return plugList
+
+
+
+####-----------------  stop indigo client.. ---------
+	def stopIndigoClientAction(self, action, typeId="", devId=""):
+
+		cmd = "ps -ef | grep 'Contents/MacOS/Indigo ' | grep -v grep "
+		ret = str(subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0])
+		if len(ret) < 10: 
+			indigo.server.log( "stop indigo client: indigo client  not running, no action")
+			return 
+		
+		# py 3x/2x are diffierent:
+		if ret.find("b' ") > -1: # py3 binary return begins with a "b' "
+			pid = ret.split()[2]
+		else:
+			pid = ret.split()[1] # py2
+		
+		# got all info   
+		#indigo.server.log( "stop indigo client: terminating indigo client pocess: {} ".format(ret))
+		
+		# now executing
+		try:
+			pid = int(pid)
+			cmd = "kill -15 {} &".format(pid)
+			# now executing stop indigo client
+			indigo.server.log("stop indigo client: shutting down client with: {}".format(cmd))
+			os.system(cmd)
+			return 
+		except Exception as e:
+			indigo.server.log( "{}".format(e))
+
+		return
+		
+
+####----------------- reboot indigo mac .. ---------
+	def rebootIndigoServerAction(self, action, typeId="", devId=""):
+
+
+		valuesDict=action.props
+
+		# this script will shutdown the indigo server and after xx secs reboot the mac
+		# set the wait time before rebot and the mac password
+		# set these parameters in the action menu
+		yourPassword 	 = valuesDict["password"]
+		waitBeforeReboot = int(valuesDict.get("waitForSecs",25))
+
+		# get indigo server proc pid
+		cmd = "ps -ef | grep 'MacOS/IndigoServer' | grep -v grep "
+		ret = str(subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0])
+		# py 3x/2x are different:
+		try:
+			if ret.find("b' ") > -1: # py3 binary return begins with a "b' "
+				pid = ret.split()[2]
+			else:
+				pid = ret.split()[1] # py2
+		except:
+			pid = "-1"
+
+		# get indigo client proc pid
+		cmd = "ps -ef | grep 'app/Contents/MacOS/Indigo ' | grep -v grep "
+		ret = str(subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0])
+		#ret = "  501 41325     1   0 10:16PM ??         0:03.11 /Applications/Indigo 2023.2.app/Contents/MacOS/Indigo 2023.2"
+		# py 3x/2x are different:
+		try:
+			if ret.find("b' ") > -1: # py3 binary return begins with a "b' "
+				pidC = ret.split()[2]
+			else:
+				pidC = ret.split()[1] # py2
+		except:
+			pidC = "-1"
+		 
+		# now executing
+		try:
+			# create shell file that will do the job, will be deleted at reboot by system
+			cmd  = "trap '' SIGINT SIGTERM\n"
+			if pidC != "-1":
+				cmd += "kill -15 {}\n".format(pidC) 
+			if pid != "-1":
+				cmd += "kill -15 {}\n".format(pid) 
+				cmd += "/bin/sleep {}\n".format(waitBeforeReboot) 
+			cmd += 	"echo '{}' | /usr/bin/sudo -S /sbin/shutdown -r now &\n".format( yourPassword) 
+			f = open("/tmp/Indigo.sh","w")
+			f.write(cmd)
+			f.close()
+		
+			# now executing stop indigo and do the reboot
+			indigo.server.log("stopping indigo, then reboot ")
+			os.system("/bin/sh /tmp/Indigo.sh&")
+			return 
+		except Exception as e:
+			indigo.server.log( "{}".format(e))
+		
+		return
+				
+
 
 
 
@@ -599,6 +706,42 @@ class Plugin(indigo.PluginBase):
 				self.ML.myLog( text=u"{:<35}{:<20}{}".format(pName, version, exVersion))
 				time.sleep(1.5)
 			self.ML.myLog( text="Plugin name -------------------    END")
+
+
+####-----------------  print device / variable states .. ---------
+	def printBatterylevels(self):
+		try:
+			whatToDo = self.taskList.split(";")[1]
+			self.taskList = ""
+			theList = []
+			for dev in indigo.devices:
+				if "batteryLevel" in dev.states:
+					theList.append([dev.states["batteryLevel"], dev.id, dev.name] )
+
+			if whatToDo == "sortDevName":
+				useList = sorted(theList, key=lambda a: (a[2],a[0]))
+			elif whatToDo.find("onlyLess") == 0:
+				percent = int(whatToDo.split("onlyLess")[1])
+				useList = []
+				for xx in theList:
+					if int(xx[0]) < percent:
+						useList.append(xx)
+				useList = sorted(useList, key=lambda a: (a[0],a[2]))
+			else:
+				useList = sorted(theList, key=lambda a: (a[0],a[2]))
+
+
+			out =  "\n BatteryLevels for all devices use {}".format(whatToDo)
+			out += "\nBatL% Id---------- Device Name-------------------------------------------"
+			for xx in useList:
+					out += "\n{:3d}   {:12} {:65}".format(xx[0], xx[1], xx[2])
+			out += "\nBatL% Id---------- Device Name-------------------------------------------"
+			indigo.server.log(out)
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+
+		return
+
 
 
 ####-----------------  print device / variable states .. ---------
@@ -919,7 +1062,17 @@ class Plugin(indigo.PluginBase):
 		subprocess.Popen(cmd, shell=True)
 		return (valuesDict, 0)
 
+####-----------------  ---------
+	def executeReboot(self, valuesDict,typeId="",devId="",mode=""):
+		yourPassword = valuesDict["passwd"]
 
+		cmd = "/bin/sleep 3;/bin/echo '" +yourPassword +"' | sudo -S /sbin/shutdown -r now &"
+
+		os.system(cmd)
+		return (valuesDict, 0)
+
+
+####-----------------  ---------
 	def getMenuActionConfigUiValues(self, menuId):
 		
 		if menuId == "printDeviceStates":
@@ -1195,7 +1348,7 @@ class Plugin(indigo.PluginBase):
 		return
 ####-----------------             ---------
 	def devOrVarCALLBACKAction(self,action1,typeId="",devId=""):
-		self.devOrVarCALLBACK(action1)
+		self.devOrVarCALLBACK(action1.props)
 		return
 
 ####-----------------   devOrVarCALLBACK          ---------
@@ -2229,6 +2382,10 @@ class Plugin(indigo.PluginBase):
 
 				if self.taskList.find("makepluginDateList") > -1:
 					self.makepluginDateList()
+
+				if self.taskList.find("printBatterylevels") > -1:
+					self.printBatterylevels()
+
 				
 				if self.printNumberOfRecords ==1:
 					self.printnOfRecords()
