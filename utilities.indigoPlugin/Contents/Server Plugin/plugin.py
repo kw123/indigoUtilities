@@ -77,13 +77,13 @@ class Plugin(indigo.PluginBase):
 
 
 		if self.pathToPlugin.find("/" + self.pluginName + ".indigoPlugin/") == -1:
-			self.errorLog(u"--------------------------------------------------------------------------------------------------------------")
-			self.errorLog(u"The pluginname is not correct, please reinstall or rename")
-			self.errorLog(u"It should be   /Libray/....../Plugins/" + self.pluginName + ".indigPlugin")
+			self.errorLog("--------------------------------------------------------------------------------------------------------------")
+			self.errorLog("The pluginname is not correct, please reinstall or rename")
+			self.errorLog("It should be   /Libray/....../Plugins/" + self.pluginName + ".indigPlugin")
 			p = max(0, self.pathToPlugin.find("/Contents/Server"))
-			self.errorLog(u"It is: " + self.pathToPlugin[:p])
-			self.errorLog(u"please check your download folder, delete old *.indigoPlugin files or this will happen again during next update")
-			self.errorLog(u"---------------------------------------------------------------------------------------------------------------")
+			self.errorLog("It is: " + self.pathToPlugin[:p])
+			self.errorLog("please check your download folder, delete old *.indigoPlugin files or this will happen again during next update")
+			self.errorLog("---------------------------------------------------------------------------------------------------------------")
 			self.sleep(2000)
 			exit(1)
 			return
@@ -91,8 +91,8 @@ class Plugin(indigo.PluginBase):
 		self.MACuserName				= pwd.getpwuid(os.getuid())[0]
 		self.MAChome					= os.path.expanduser("~")
 		self.userIndigoDir				= self.MAChome + "/indigo/"
-		self.userIndigoPluginDir		= self.userIndigoDir + u"utilities/"
-		self.oldIndigoDir				= self.MAChome + u"/documents/indigoUtilities/"
+		self.userIndigoPluginDir		= self.userIndigoDir + "utilities/"
+		self.oldIndigoDir				= self.MAChome + "/documents/indigoUtilities/"
 
 		self.getInstallFolderPath		= indigo.server.getInstallFolderPath()+"/"
 		self.indigoRootPath 			= indigo.server.getInstallFolderPath().split("Indigo")[0]
@@ -122,17 +122,17 @@ class Plugin(indigo.PluginBase):
 		self.varID 						= 0
 		self.quitNow					= "" # set to !="" when plugin should exit ie to restart, needed for subscription -> loop model
 		self.printNumberOfRecords 		= 0
-		if os.path.isfile(u"/Library/Frameworks/Python.framework/Versions/Current/bin/python3"):
-			self.pythonPath				= u"/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
-		elif os.path.isfile(u"/usr/local/bin/python"):
-			self.pythonPath				= u"/usr/local/bin/python"
-		elif os.path.isfile(u"/usr/bin/python2.7"):
-			self.pythonPath				= u"/usr/bin/python2.7"
+		if os.path.isfile("/Library/Frameworks/Python.framework/Versions/Current/bin/python3"):
+			self.pythonPath				= "/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
+		elif os.path.isfile("/usr/local/bin/python"):
+			self.pythonPath				= "/usr/local/bin/python"
+		elif os.path.isfile("/usr/bin/python2.7"):
+			self.pythonPath				= "/usr/bin/python2.7"
 		else:
-			self.errorLog(u"FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping INDIGOplotD")
+			self.errorLog("FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping INDIGOplotD")
 			self.quitNOW = "none of python versions 2.7 3.x is installed "
 			return
-		indigo.server.log(u"using '" +self.pythonPath +"' for utility programs")
+		indigo.server.log("using '" +self.pythonPath +"' for utility programs")
 
 		self.PLUGINSusedForCPUlimts, raw = self.readJson(self.indigoPreferencesPluginDir+"PLUGINSusedForCPUlimts.json")
 		if len(raw) < 10: 
@@ -193,7 +193,7 @@ class Plugin(indigo.PluginBase):
 		self.ML = myLogPgms.myLogPgms.MLX()
 
 		self.setLogfile(self.pluginPrefs.get("logFileActive2", "standard"))
-		self.ML.myLog( text=u"initialized")
+		self.ML.myLog( text="initialized")
 
 		return
 
@@ -201,7 +201,7 @@ class Plugin(indigo.PluginBase):
 	def getDebugLevels(self):
 		self.debugLevel			= []
 		for d in ["Logic","SQL","all"]:
-			if self.pluginPrefs.get(u"debug"+d, False): self.debugLevel.append(d)
+			if self.pluginPrefs.get("debug"+d, False): self.debugLevel.append(d)
 		return
 
 
@@ -214,7 +214,7 @@ class Plugin(indigo.PluginBase):
 		return
 	########################################
 	#def stopConcurrentThread(self):
-	#    self.ML.myLog( text=u"stopConcurrentThread called " + str(self.stopConcurrentCounter))
+	#    self.ML.myLog( text="stopConcurrentThread called " + str(self.stopConcurrentCounter))
 	#    self.stopConcurrentCounter +=1
 	#    if self.stopConcurrentCounter ==1:
 	#        self.stopThread = True
@@ -227,13 +227,13 @@ class Plugin(indigo.PluginBase):
 
 		self.debugLevel			= []
 		for d in ["Logic","SQL","all"]:
-			if valuesDict[u"debug"+d]: self.debugLevel.append(d)
+			if valuesDict["debug"+d]: self.debugLevel.append(d)
 
-		self.setLogfile(valuesDict[u"logFileActive2"])
-		self.yourPassword		= valuesDict[u"yourPassword"]
+		self.setLogfile(valuesDict["logFileActive2"])
+		self.yourPassword		= valuesDict["yourPassword"]
 
-		self.localeLanguage     = valuesDict[u"localeLanguage"]
-		self.enccodingChar      = valuesDict[u"enccodingChar"]
+		self.localeLanguage     = valuesDict["localeLanguage"]
+		self.enccodingChar      = valuesDict["enccodingChar"]
 		self.liteOrPsql			= valuesDict["liteOrPsql"]
 		self.liteOrPsqlString	= valuesDict["liteOrPsqlString"]
 		self.postgresUserId		= valuesDict["postgresUserId"]
@@ -301,8 +301,10 @@ class Plugin(indigo.PluginBase):
 
 		varcount = 0
 		devcount = 0
+		devTypes = {}
+		enabledDisabled =[0,0,0]
 
-		indigo.server.log(u"\n                 ============== Print variables and devices names/ids logfile =============" ," ")
+		indigo.server.log("\n                 ============== Print variables and devices names/ids logfile =============" ," ")
 		listV=[]
 		for var in indigo.variables:
 			varcount += 1
@@ -310,41 +312,53 @@ class Plugin(indigo.PluginBase):
 		listV= sorted(listV)
 		nn=0
 		out=""
-		line="[Variable Name - Variable ID]\n"
+		line="[Variable Name -- Variable ID]\n"
 		for pair in listV:
 			nn+=1
 			if nn ==4:
 				line+=out+"\n"
 				nn=1
 				out=""
-			out+= ("["+pair[0]+"--"+pair[1]+"]").ljust(60)
+			out+= ("["+pair[0]+"--"+pair[1]+"]").ljust(70)
 		if nn !=0:
 			line+=out+"\n"
 		indigo.server.log(line)
 
 
 		listV=[]
-		indigo.server.log(u" "," ")
+		indigo.server.log(" "," ")
 		for dev in indigo.devices:
+			if dev.deviceTypeId not in devTypes: devTypes[dev.deviceTypeId] = [0,0,0]
+			if dev.enabled: enabled = 0
+			else:			enabled = 1
+			devTypes[dev.deviceTypeId][enabled]  += 1
+			devTypes[dev.deviceTypeId][2]  += 1
+			enabledDisabled[enabled] +=1
+			enabledDisabled[2] +=1
 			devcount += 1
 			listV.append((dev.name,str(dev.id)))
 		listV= sorted(listV)
 		nn=0
-		out=""
-		line="[Device Name - Device ID]\n"
+		out= ""
+		line="[Device Name -- Device ID]\n"
 		for pair in listV:
 			nn+=1
 			if nn ==4:
 				line+=out+"\n"
 				nn=1
 				out=""
-			out+= ("["+pair[0]+"--"+pair[1]+"]").ljust(60)
+			out+= ("["+pair[0]+"--"+pair[1]+"]").ljust(70)
 		if nn !=0:
 			line+=out+"\n"
 		indigo.server.log(line)
 
 		indigo.server.log("Number of variables: {}".format(varcount))
 		indigo.server.log("Number of devices:   {}".format(devcount))
+		devList = "\n"
+		for devType in sorted(devTypes):
+			devList += "{:27s}  {:4d}     {:4d}     {:4d}\n".format(devType, devTypes[devType][0], devTypes[devType][1], devTypes[devType][2])
+		devList +=          "    total                    {:4d}     {:4d}     {:4d}".format(enabledDisabled[0], enabledDisabled[1], enabledDisabled[2])
+		indigo.server.log("\ndevice type ----------    enabled disabled      sum {}".format(devList))
 
 		return
 
@@ -385,7 +399,7 @@ class Plugin(indigo.PluginBase):
 
 		plugList= {}
 		try:
-			lines = psef.strip(u"\n").split(u"\n")
+			lines = psef.strip("\n").split("\n")
 			version =" "
 			for line in lines:
 				#indigo.server.log(line)
@@ -408,9 +422,9 @@ class Plugin(indigo.PluginBase):
 					pType ="plugin"
 					try:
 						if sys.version_info[0]  > 2:
-							f = open(self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist","r", encoding="utf-8")
+							f = open(self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Info.plist","r", encoding="utf-8")
 						else:
-							f = codecs.open(self.indigoPath+u"Plugins/"+pName+u".indigoPlugin/Contents/Info.plist","r", "utf-8")
+							f = codecs.open(self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Info.plist","r", "utf-8")
 						xmlLines = f.read()
 						temp = xmlLines.split("CFBundleIdentifier</key>")
 						if len(temp) >1:
@@ -580,15 +594,21 @@ class Plugin(indigo.PluginBase):
 	def printPowermetrics(self, menuId="", xx=""):
 
 		if len(self.yourPassword) <3:
-			indigo.server.log(u"print powermetrics info to logfile password not set in config" )
+			indigo.server.log("print powermetrics info to logfile password not set in config" )
 
 		else: 
-			indigo.server.log(u"print powermetrics info to logfile, this will take about 5 sec using: (pwd = your password)" )
-			indigo.server.log(u"echo 'pwd' | sudo -S  /usr/bin/powermetrics -i 10 --format text  & /bin/sleep 8; echo 'pwd' | sudo -S  /usr/bin/killall -9 powermetrics" )
-			cmd = u"echo '{}' | sudo -S  /usr/bin/powermetrics -i 6 --format text  & /bin/sleep 5; echo '{}' | sudo -S  /usr/bin/killall -9 powermetrics".format(self.yourPassword, self.yourPassword)
+			indigo.server.log("print powermetrics info to logfile, this will take about 2 sec using: " )
+			cmd = "echo '{}' | sudo -S  /usr/bin/powermetrics -i 6 --format text  & /bin/sleep 2; echo '{}' | sudo -S  /usr/bin/killall -9 powermetrics".format(self.yourPassword, self.yourPassword)
 			ret, err = self.readPopen(cmd)
-			theLines = ret.split("Running tasks")[1]
-			indigo.server.log(theLines)
+			indigo.server.log("cmd:{}".format(cmd))
+			if len(err) > 0:
+				indigo.server.log("ret:{}".format(ret))
+				indigo.server.log("err:{}".format(err))
+				indigo.server.log(" try running the cmd in manually terminal (copy and paste cmd:>>\" ....  \"<< into terminal window)")
+			else:
+				theLines = ret.split("Running tasks")
+				if len(theLines) > 1: theLines = theLines[1]
+				indigo.server.log("{}".format(theLines))
 
 		return 
 		
@@ -601,25 +621,25 @@ class Plugin(indigo.PluginBase):
 	def printMACtemperatures(self, menuId="", xx=""):
 		ret, err = self.readPopen("'"+self.pathToPlugin+"osx-temp-fan'")
 
-		out = u""
+		out = ""
 		ll = ret.strip("\n")
 		for line in ll.split("\n"):
 			if line.find("-99") >-1: continue
 			items = line.split(":")
 			if len(items) !=2:       continue
 			if items[0].find("fan") > -1: 
-				val = u"{}[r/m]".format(items[1].split(".")[0]) # only integer part
+				val = "{}[r/m]".format(items[1].split(".")[0]) # only integer part
 			else:                        
 				t = float(items[1])
 				if self.cpuTempUnit == "F": 
-					val = u"{%.1f}[ºF]".format(t*9./5 +32)
+					val = "{%.1f}[ºF]".format(t*9./5 +32)
 				else:
-					val = u"{:.1f}[ºC]".format(t)
-			out += u"{:30}:{}\n".format(items[0], val)
+					val = "{:.1f}[ºC]".format(t)
+			out += "{:30}:{}\n".format(items[0], val)
 		if out !="":
-			indigo.server.log(u"\nTemperatures and fan speeds of indigo MAC \n"+out)
+			indigo.server.log("\nTemperatures and fan speeds of indigo MAC \n"+out)
 		else:
-			indigo.server.log(u"raw data fan temp .. info (-99=not available)\n{}".format(ret) )
+			indigo.server.log("raw data fan temp .. info (-99=not available)\n{}".format(ret) )
 
 		return
 		
@@ -654,9 +674,9 @@ class Plugin(indigo.PluginBase):
 				pCPU    = item["cpu"]
 				pID     = item["pid"]
 				version = item["version"]
-				if pID in memList:    mem = u"{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
-				else:                 mem = u" ".rjust(18)
-				out.append( u"{:>7}{:>11}    {}  {:10} {}\n".format(pID, pCPU, mem, version, pName) )
+				if pID in memList:    mem = "{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+				else:                 mem = " ".rjust(18)
+				out.append( "{:>7}{:>11}    {}  {:10} {}\n".format(pID, pCPU, mem, version, pName) )
 				ret2 = []
 				for line in psef.split("\n"):
 					if (" "+pID+" ") not in line: continue
@@ -668,13 +688,13 @@ class Plugin(indigo.PluginBase):
 					name = items2["name"]
 					if len(name) < 10: continue
 					dCPU = items2["cpu"]
-					doughterProcess= u"            SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
-					if pID in memList:	mem = u"{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+					doughterProcess= "            SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
+					if pID in memList:	mem = "{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
 					else:				mem = " ".rjust(18)
-					out.append( u"{:>7}{:>11}    {}  {}\n".format(dPID, dCPU, mem, doughterProcess))
+					out.append( "{:>7}{:>11}    {}  {}\n".format(dPID, dCPU, mem, doughterProcess))
 				if pID in fileList and len(fileList[pID]) > 0:
 					for ff in fileList[pID]:
-						out.append( u"{:42}              openFile:{}\n".format(" ",ff))
+						out.append( "{:42}              openFile:{}\n".format(" ",ff))
 			except  Exception as e:
 				self.exceptionHandler(40,e)
 		indigo.server.log("".join(out))
@@ -703,7 +723,7 @@ class Plugin(indigo.PluginBase):
 				exVersion ="not available" 
 				if item["version"].find("no") ==-1:
 					exVersion =   VS.versionCheck(plID,"0.0.0",indigo,0,0, printToLog="no",force =True)
-				self.ML.myLog( text=u"{:<35}{:<20}{}".format(pName, version, exVersion))
+				self.ML.myLog( text="{:<35}{:<20}{}".format(pName, version, exVersion))
 				time.sleep(1.5)
 			self.ML.myLog( text="Plugin name -------------------    END")
 
@@ -716,26 +736,26 @@ class Plugin(indigo.PluginBase):
 			theList = []
 			for dev in indigo.devices:
 				if "batteryLevel" in dev.states:
-					theList.append([dev.states["batteryLevel"], dev.id, dev.name] )
+					theList.append([dev.states["batteryLevel"], dev.id, dev.name, str(dev.enabled)] )
 
 			if whatToDo == "sortDevName":
-				useList = sorted(theList, key=lambda a: (a[2],a[0]))
+				useList = sorted(theList, key=lambda a: (a[2], a[0]))
 			elif whatToDo.find("onlyLess") == 0:
 				percent = int(whatToDo.split("onlyLess")[1])
 				useList = []
 				for xx in theList:
 					if int(xx[0]) < percent:
 						useList.append(xx)
-				useList = sorted(useList, key=lambda a: (a[0],a[2]))
+				useList = sorted(useList, key=lambda a: (a[3], a[0],a[2]))
 			else:
-				useList = sorted(theList, key=lambda a: (a[0],a[2]))
+				useList = sorted(theList, key=lambda a: (a[3], a[0],a[2]))
 
 
 			out =  "\n BatteryLevels for all devices use {}".format(whatToDo)
-			out += "\nBatL% Id---------- Device Name-------------------------------------------"
+			out += "\nBatL% enabled Id---------- Device Name-------------------------------------------"
 			for xx in useList:
-					out += "\n{:3d}   {:12} {:65}".format(xx[0], xx[1], xx[2])
-			out += "\nBatL% Id---------- Device Name-------------------------------------------"
+					out += "\n{:3d}   {:5s} {:12} {:65}".format(xx[0], xx[3], xx[1], xx[2])
+			out += "\nBatL% enabled Id---------- Device Name-------------------------------------------"
 			indigo.server.log(out)
 		except  Exception as e:
 			self.exceptionHandler(40,e)
@@ -843,10 +863,10 @@ class Plugin(indigo.PluginBase):
 
 
 		tList=sorted(triggers)  
-		indigo.server.log(u"\n                 ============== Print for each Trigger  devices/variables that trigger them      =============" ," ")
+		indigo.server.log("\n                 ============== Print for each Trigger  devices/variables that trigger them      =============" ," ")
 		indigo.server.log("Trig.ID      Trig.SourceType Dev/Var/Plugin-ID           Source-D/V/P-Name         Other info", type="Trigger Name")
 		for tName in tList:
-			indigo.server.log(u"{:<12} {:<15} {} {} {}".format(triggers[tName]["id"], triggers[tName]["type"], triggers[tName]["id2"].ljust(27)[-27:], triggers[tName]["vdName"].ljust(25)[:25], triggers[tName]["other"]), type=tName[:30]  )
+			indigo.server.log("{:<12} {:<15} {} {} {}".format(triggers[tName]["id"], triggers[tName]["type"], triggers[tName]["id2"].ljust(27)[-27:], triggers[tName]["vdName"].ljust(25)[:25], triggers[tName]["other"]), type=tName[:30]  )
 		return
 
 
@@ -854,7 +874,7 @@ class Plugin(indigo.PluginBase):
 	def inpPrintdevzWave(self, menuId="", xx=""):
 	
 	
-		indigo.server.log(u"\n                 ============== Print zwave info of devices to logfile =============" ," ")
+		indigo.server.log("\n                 ============== Print zwave info of devices to logfile =============" ," ")
 		nList=[]
 		for dev in indigo.devices:
 			if unicode(dev.protocol).find("ZWave")==-1:	continue
@@ -862,10 +882,10 @@ class Plugin(indigo.PluginBase):
 				indigo.server.log(" zwave not working for device" + dev.name)
 				continue
 			if "zwNodeNeighborsStr" not in dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]: continue
-			neighb = u"{:}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
+			neighb = "{:}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
 			if len(neighb)< 1: continue
-			address = u"{:>4}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"])
-			nList.append((address, u"{:30}-{:15}: {}".format(dev.name, address, neighb), u"{}".format(dev.id)))
+			address = "{:>4}".format(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"])
+			nList.append((address, "{:30}-{:15}: {}".format(dev.name, address, neighb), "{}".format(dev.id)))
 		
 		indigo.server.log(("  --------------------------device Name -addr").rjust(40)+":  neighbors","Device ID")
 		nList=sorted(nList)
@@ -873,7 +893,7 @@ class Plugin(indigo.PluginBase):
 			indigo.server.log( out[1],out[2])  #["zwNodeNeighborsStr"])
 
 
-		indigo.server.log(u"creating .dot file for GRAPHVIZ" )
+		indigo.server.log("creating .dot file for GRAPHVIZ" )
 		nList=[]
 		for dev in indigo.devices:
 			if unicode(dev.protocol).find("ZWave")==-1:	continue
@@ -894,18 +914,18 @@ class Plugin(indigo.PluginBase):
 		for out in nList:
 				if currentDev==out[0]: continue
 				###indigo.server.log(unicode(out))
-				f.write((u"    "+(out[0])+u" [label=\""+unicode(out[0]).lstrip()+u" - "+(out[1])+u"\"]\n").encode("utf-8"))
+				f.write(("    "+(out[0])+" [label=\""+unicode(out[0]).lstrip()+" - "+(out[1])+"\"]\n").encode("utf-8"))
 				currentDev=out[0]
 		for out in nList:
-			if out[2].find(u"none")==-1:
-				f.write((u"        "+out[0]+u" ->"+out[2]+u";\n").encode("utf-8"))
-		f.write(u"}\n")
+			if out[2].find("none")==-1:
+				f.write(("        "+out[0]+" ->"+out[2]+";\n").encode("utf-8"))
+		f.write("}\n")
 		f.close()
-		indigo.server.log(    u"Created graphviz input file:   \""+self.userIndigoPluginDir+"zWave.dot\"")
+		indigo.server.log(    "Created graphviz input file:   \""+self.userIndigoPluginDir+"zWave.dot\"")
 		
 		if os.path.isfile("/usr/local/bin/dot"):
 			subprocess.Popen("/usr/local/bin/dot -Tsvg "+self.userIndigoPluginDir+"zWave.dot > "+self.userIndigoPluginDir+"zWave.svg ",shell=True).communicate()
-			indigo.server.log(u"Created graphviz outpout file: \""+self.userIndigoPluginDir+"zWave.svg\"")
+			indigo.server.log("Created graphviz outpout file: \""+self.userIndigoPluginDir+"zWave.svg\"")
 
 		return
 	
@@ -915,7 +935,7 @@ class Plugin(indigo.PluginBase):
 
 		varcount = 0
 		devcount = 0
-		indigo.server.log(u"\n                 ============== Print variables and devices to logfile =============" ," ")
+		indigo.server.log("\n                 ============== Print variables and devices to logfile =============" ," ")
 		indigo.server.log(("-----------------------------variables").rjust(40)+":  Value","Variable ID")
 		for var in indigo.variables:
 			varcount += 1
@@ -929,7 +949,7 @@ class Plugin(indigo.PluginBase):
 
 		indigo.server.log("Number of variables: {}".format(varcount))
 
-		indigo.server.log(u"\n "," ")
+		indigo.server.log("\n "," ")
 		indigo.server.log(("  ---------------------------device Name").rjust(40)+":  State(Value), State(Value), ...","Device ID")
 		for dev in indigo.devices:
 			devcount += 1
@@ -949,7 +969,7 @@ class Plugin(indigo.PluginBase):
 				for jj in range(ii,min(ii+5,count),1):
 					out+=retList[jj]
 				indigo.server.log(first+out,id)
-				first= u" ".rjust(40)+":  "
+				first= " ".rjust(40)+":  "
 				id=" "
 
 		indigo.server.log("Number of devices: {}".format(devcount))
@@ -984,10 +1004,10 @@ class Plugin(indigo.PluginBase):
 ####-----------------  ---------
 	def executeBACKUPindigo(self, valuesDict="",typeId="",devId=""):
 		cmd="cp -R  '"+self.indigoPath+"databases' '" +self.userIndigoPluginDir+"'"
-		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=u" indigo backup: " + cmd)
+		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=" indigo backup: " + cmd)
 		subprocess.Popen(cmd, shell=True)
 		cmd="cp -R  '"+self.indigoPath+"Preferences' '" +self.userIndigoPluginDir+"'"
-		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=u" indigo backup: " + cmd)
+		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=" indigo backup: " + cmd)
 		subprocess.Popen(cmd, shell=True)
 		return valuesDict
 
@@ -1015,7 +1035,7 @@ class Plugin(indigo.PluginBase):
 	def executeBACKUPpostgres(self, valuesDict="",typeId="",devId=""):
 		ret, err = self.readPopen("ps -ef | grep '/pg_dump ' | grep -v grep ")
 		if len(ret)>20:
-			self.ML.myLog( text=u"previous postgres backup dump  job still running, please wait until finished ")
+			self.ML.myLog( text="previous postgres backup dump  job still running, please wait until finished ")
 			return 
 
 		## move last dump  to dump-1 file
@@ -1042,8 +1062,8 @@ class Plugin(indigo.PluginBase):
 		ret, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
 
 		if len(ret)>20:
-			self.ML.myLog( text=u"previous SQLite job still running, please wait until finished ")
-			return (valuesDict, u"previous SQLite job still running, please wait until finished ")
+			self.ML.myLog( text="previous SQLite job still running, please wait until finished ")
+			return (valuesDict, "previous SQLite job still running, please wait until finished ")
 
 		try:
 			os.remove(self.userIndigoPluginDir+"steps")
@@ -1057,8 +1077,8 @@ class Plugin(indigo.PluginBase):
 				test = "variable_history_"+str(var.id)
 				break
 		cmd=self.pythonPath+ " '"+self.indigoPath+"Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' "+mode+" "+test+" "+self.noOfBackupCopies
-		self.ML.myLog( text=u"starting SQLite job "+cmd )
-		self.ML.myLog( text=u"...                       started  at "+ str(datetime.datetime.now()) )
+		self.ML.myLog( text="starting SQLite job "+cmd )
+		self.ML.myLog( text="...                       started  at "+ str(datetime.datetime.now()) )
 		subprocess.Popen(cmd, shell=True)
 		return (valuesDict, 0)
 
@@ -1262,7 +1282,7 @@ class Plugin(indigo.PluginBase):
 				factor    = max(0.01,deltaT/100.)
 				deltaCPU  = max(0, (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor )
 				totalDelta += deltaCPU
-				if self.ML.decideMyLog("Logic"): self.ML.myLog( text=u"plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
+				if self.ML.decideMyLog("Logic"): self.ML.myLog( text="plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
 				if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
 					if self.ML.decideMyLog("Logic"): self.ML.myLog( text="triggering > threshold for "+plugID )
 					self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
@@ -1896,10 +1916,11 @@ class Plugin(indigo.PluginBase):
 
 
 		try:
+			out = []
 			if separator =="tab": separator="	"
 		
 		
-			if separator =="":
+			if separator == "":
 				if header !="yes":
 					sqlitePGM	= "/usr/bin/sqlite3   -column '"+self.indigoPath+ "logs/indigo_history.sqlite'"
 					postGrePGM	= self.liteOrPsqlString +"-t  -c "
@@ -1955,9 +1976,9 @@ class Plugin(indigo.PluginBase):
 			for ss in range(len(states)):
 				if states[ss] != "*" and states[ss] != "":
 					if self.liteOrPsql == "sqlite":
-						states[ss] = "["+states[ss].lower()+"]"
+						states[ss] = "["+states[ss].lower().replace(".","_").replace("-","_")+"]"
 					else:
-						states[ss] = '\\"'+states[ss].lower()+'\\"'
+						states[ss] = '\\"'+states[ss].lower().replace(".","_").replace("-","_")+'\\"'
 			
 			sqlCommandText=  pgm
 			if states[0] == "*":
@@ -1970,7 +1991,7 @@ class Plugin(indigo.PluginBase):
 				sqlCommandText+=  " \"SELECT id, "+ts
 				for st in states:
 					if st != "":
-						sqlCommandText+=","+st.replace(".","_")
+						sqlCommandText+=","+st
 			sqlCommandText+=  " from "+devOrVar+ idStr
 			
 			where =""
@@ -1998,7 +2019,7 @@ class Plugin(indigo.PluginBase):
 							elif valuesDict["state1Condition"] =="notNULL": 
 								where += " AND "+states[1]+" IS NOT NULL "
 
-			if id =="": # regular menue input
+			if id == "": # regular menue input
 				if numberOfRecords !="noLimit":
 					sqlCommandText+=  where + orderby+" LIMIT " + str(numberOfRecords)+" OFFSET (SELECT COUNT(*) FROM "+devOrVar+ idStr+where+")-"+numberOfRecords
 				else:
@@ -2066,8 +2087,8 @@ class Plugin(indigo.PluginBase):
 						if header =="yes":
 							items = lines[1].split("  ")
 							start = 0
-							itemlength =[]
-							itemstart  =[]
+							itemlength = []
+							itemstart  = []
 							for item in items:
 								itemstart.append(start)
 								itemlength.append(len(item)+2)
@@ -2097,13 +2118,13 @@ class Plugin(indigo.PluginBase):
 
 
 				if "printFile" in valuesDict:
-					if valuesDict["printFile"] !="":
+					if valuesDict["printFile"] != "":
 						if self.ML.decideMyLog("Logic"): self.ML.myLog( text="print to file '"+self.userIndigoPluginDir+ valuesDict["printFile"]+"'")
 						fFile=True
 						try:
 							f=open(self.userIndigoPluginDir+valuesDict["printFile"],"w")
 							f.write(result)
-							if extraMsg !="":
+							if extraMsg != "":
 								f.write(extraMsg+"\n")
 							f.close()
 							valuesDict["msg"]="check INDIGO logfile for output"
@@ -2114,7 +2135,7 @@ class Plugin(indigo.PluginBase):
 				if not fFile:
 					valuesDict["msg"]="check INDIGO logfile for output"
 					self.ML.myLog( text="\n" +result , mType="SQL-OUTPUT: " )
-					if extraMsg !="":
+					if extraMsg != "":
 						self.ML.myLog( text=extraMsg , mType="SQL-OUTPUT: " )
 
 
@@ -2124,19 +2145,19 @@ class Plugin(indigo.PluginBase):
 				if len(str(id).strip(" ")) ==0:  ## put  last-1 record to variable
 					try:
 						nn= len(lines)-2
-						if self.liteOrPsql !="sqlite" and header=="yes" and separator =="":	nn-=1
+						if self.liteOrPsql !="sqlite" and header=="yes" and separator == "":	nn-=1
 						nn = max(nn,0)
 						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=" last -1 record:   "+lines[nn])
-						if separator=="":
+						if separator == "":
 							theSplit = lines[nn].split()
 							if len(theSplit) >2:
 								value1=theSplit[2]
 							else:
-								value1=  lines[nn] 
+								value1 =  lines[nn] 
 						else:
 							theSplit = lines[nn].split(separator)
 							if len(theSplit) >2:
-								value1=thesplit[2]
+								value1 = thesplit[2]
 							else:
 								value1=  lines[nn] 
 						indigo.variable.updateValue("SQLValueOutput",value1)
@@ -2145,14 +2166,14 @@ class Plugin(indigo.PluginBase):
 					except  Exception as e:
 						self.exceptionHandler(40,e)
 				else:							## put   record #id to variable
-					nn=0
-					if header =="yes": nn+=1
-					if separator =="" and header =="yes": nn+=1
-					if self.liteOrPsql !="sqlite":	nn+=1
+					nn = 0
+					if header == "yes": nn+=1
+					if separator == "" and header == "yes": nn+=1
+					if self.liteOrPsql != "sqlite":	nn+=1
 					if len(lines) >nn+1:
 						try:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="record id# "+str(id)+"  "+lines[nn])
-							if separator=="":
+							if separator == "":
 								value1 = lines[nn].split()[2]
 							else:
 								value1 = lines[nn].split(separator)[2]
@@ -2163,7 +2184,7 @@ class Plugin(indigo.PluginBase):
 							self.ML.myLog( text="printSQL error in  Line '%s' ;  error='%s'" % (sys.exc_info()[2].tb_lineno, e))
 
 				if error:
-					self.ML.myLog( text="printSQL error  sql output - no string returned for "+states[0]+"  number of lines returned: "+  str(len(lines)) +" \n"+out[0], errorType="smallErr")
+					self.ML.myLog( text="printSQL error  sql output - no string returned for "+states[0]+"  number of lines returned: "+  str(len(lines)), errorType="smallErr")
 					valuesDict["msg"]="printSQL error  sql output - no string returned for "+states[0]
 	
 
@@ -2354,7 +2375,7 @@ class Plugin(indigo.PluginBase):
 
 		self.sleep(1)
 		if self.quitNow !="":
-			indigo.server.log( u"runConcurrentThread stopping plugin due to:  ::::: " + self.quitNow + " :::::")
+			indigo.server.log( "runConcurrentThread stopping plugin due to:  ::::: " + self.quitNow + " :::::")
 			serverPlugin = indigo.server.getPlugin(self.pluginId)
 			serverPlugin.restart(waitUntilDone=False)
 
@@ -2371,7 +2392,7 @@ class Plugin(indigo.PluginBase):
 		loopCounter=0
 		self.taskList =""
 		try:
-			while self.quitNow =="":
+			while self.quitNow == "":
 				self.sleep(5)
 
 				loopCounter+=1
@@ -2394,7 +2415,7 @@ class Plugin(indigo.PluginBase):
 				if self.postgresBackupStarted !=0:
 					ret, err = self.readPopen("ps -ef | grep '/pg_dump ' | grep -v grep ")
 					if len(ret)<5:
-						self.ML.myLog( text=u" postgres backup dump  finished after " + str(int(time.time()-self.postgresBackupStarted))+"  seconds" )
+						self.ML.myLog( text=" postgres backup dump  finished after " + str(int(time.time()-self.postgresBackupStarted))+"  seconds" )
 						self.postgresBackupStarted =0
 
 				if self.executeDatabaseSqueezeCommand != "":
@@ -2423,7 +2444,7 @@ class Plugin(indigo.PluginBase):
 						if not os.path.isfile(self.userIndigoPluginDir+"retcodes"): continue
 						if os.path.getsize(self.userIndigoPluginDir+"retcodes") >1:
 							self.ML.myLog( text="BACKUP of SQLite failed, check logfile: "+self.userIndigoPluginDir+"backup.log")
-							self.triggerEvent(u"badBackup")
+							self.triggerEvent("badBackup")
 						else:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="BACKUP files are: ")
 							if os.path.isfile(self.indigoPath+"logs/indigo_history-1.sqlite"):
@@ -2437,7 +2458,7 @@ class Plugin(indigo.PluginBase):
 								self.ML.myLog( text="backup of SQLite finished at "+ str(datetime.datetime.now()))
 							else:
 								self.ML.myLog( text="BACKUP of SQLite failed, check logfile: "+self.userIndigoPluginDir+"backup.log  SQLITE file  "+self.indigoPath+"logs/indigo_history-1.sqlite   not created")
-								self.triggerEvent(u"badBackup")
+								self.triggerEvent("badBackup")
 				
 						self.backupStarted = False
 						if os.path.isfile(self.userIndigoPluginDir+"steps"):os.remove(self.userIndigoPluginDir+"steps")
@@ -2509,19 +2530,19 @@ class Plugin(indigo.PluginBase):
 	######################################################################################
 
 	def triggerStartProcessing(self, trigger):
-	#		self.myLog(4,u"<<-- entering triggerStartProcessing: %s (%d)" % (trigger.name, trigger.id) )iDeviceHomeDistance
+	#		self.myLog(4, "<<-- entering triggerStartProcessing: %s (%d)" % (trigger.name, trigger.id) )iDeviceHomeDistance
 		self.triggerList.append(trigger.id)
-	#		self.myLog(4,u"exiting triggerStartProcessing -->>")
+	#		self.myLog(4, "exiting triggerStartProcessing -->>")
 
 	def triggerStopProcessing(self, trigger):
-	#		self.myLog(4,u"<<-- entering triggerStopProcessing: %s (%d)" % (trigger.name, trigger.id))
+	#		self.myLog(4, "<<-- entering triggerStopProcessing: %s (%d)" % (trigger.name, trigger.id))
 		if trigger.id in self.triggerList:
-	#			self.myLog(4,u"TRIGGER FOUND")
+	#			self.myLog(4, "TRIGGER FOUND")
 			self.triggerList.remove(trigger.id)
-	#		self.myLog(4, u"exiting triggerStopProcessing -->>")
+	#		self.myLog(4, "exiting triggerStopProcessing -->>")
 
 	#def triggerUpdated(self, origDev, newDev):
-	#	self.logger.log(4, u"<<-- entering triggerUpdated: %s" % origDev.name)
+	#	self.logger.log(4, "<<-- entering triggerUpdated: %s" % origDev.name)
 	#	self.triggerStopProcessing(origDev)
 	#	self.triggerStartProcessing(newDev)
 
@@ -2531,9 +2552,9 @@ class Plugin(indigo.PluginBase):
 	######################################################################################
 
 	def triggerEvent(self, eventId):
-		#self.myLog(4,u"<<-- entering triggerEvent: %s " % eventId)
+		#self.myLog(4, "<<-- entering triggerEvent: %s " % eventId)
 		for trigId in self.triggerList:
-			#self.myLog(4,u"<<-- trigId: %s " % trigId)
+			#self.myLog(4, "<<-- trigId: %s " % trigId)
 			trigger = indigo.triggers[trigId]
 			if trigId == eventId:
 				indigo.trigger.execute(trigger)
@@ -2578,7 +2599,7 @@ class Plugin(indigo.PluginBase):
 				out = json.dumps(data,sort_keys=sort_keys, indent=indent)
 			else:
 				out = json.dumps(data,sort_keys=sort_keys)
-			#logger.log(10, u" writeJson-in:{}\nout: {}".format(data, out) )
+			#logger.log(10, " writeJson-in:{}\nout: {}".format(data, out) )
 		##print "writing json to "+fName, out
 			f=open(fName,"w")
 			f.write(out)
@@ -2594,7 +2615,7 @@ class Plugin(indigo.PluginBase):
 		raw = ""
 		try:
 			if not os.path.isfile(fName):
-				indigo.server.log( u"no fname:{}".format(fName))
+				indigo.server.log( "no fname:{}".format(fName))
 				return {},""
 			f=open(fName,"r")
 			raw = f.read()
@@ -2602,7 +2623,7 @@ class Plugin(indigo.PluginBase):
 			data = json.loads(raw)
 		except	Exception as e:
 			self.exceptionHandler(40,e)
-			indigo.server.log(u"fname:{}, data:{}".format(fName, raw ))
+			indigo.server.log("fname:{}, data:{}".format(fName, raw ))
 			return {}, ""
 		return data, raw
 
@@ -2627,7 +2648,7 @@ class Plugin(indigo.PluginBase):
 
 		try:
 			try: 
-				if u"{}".format(exception_error_message).find("None") >-1: return exception_error_message
+				if "{}".format(exception_error_message).find("None") >-1: return exception_error_message
 			except: 
 				pass
 

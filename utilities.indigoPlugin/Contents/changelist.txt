@@ -1,7 +1,30 @@
+Added features / changes in v2022.22.45 @ 2025-07-22
+===================================================
+
+1. fixed sql report for device names, states with "-". they get replaced with "_" in the sql DB
+the query now used "_" instead of "-"
+
+2. removed error in printing to log when sql query came beck with and error in case no data etc. 
+
+
+
+
+Added features / changes in v2022.22.44 @ 2025-03-21
+===================================================
+
+1. some improvements in "print stuff" and some smaller formatting improvements 
+
+
+Added features / changes in v2022.22.43 @ 2024-10-03
+===================================================
+
+1. added option to print all battery levels, sorted by name or % level and enabled/disabled
+
+
 Added features / changes in v2022.22.42 @ 2024-10-03
 ===================================================
 
-1. aadded menu and action options to print battery level of all devices to the indigo log.
+1. added menu and action options to print battery level of all devices to the indigo log.
    you can select to only print bat level < xx %  (xx = 10,20..60%) to limit the amount of print out and only list those that need attention
    you can put the print into a schedule that runs once a day
 

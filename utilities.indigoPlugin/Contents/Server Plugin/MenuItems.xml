@@ -56,7 +56,7 @@
 			</Field>
 
 			<Field  id="menu-4" type="button" >
-				<Label>All Trigers and triggeringing devices and variables</Label>
+				<Label>All Trigers and triggering devices and variables</Label>
 				<Title>PRINT</Title>
 				<CallbackMethod>inpPrintTriggers</CallbackMethod>
 			</Field>
@@ -135,6 +135,8 @@
 			<Field  id="batteryLevelWhatToprint" type="menu" default="sortBatteryLevel">
 					<Label>how to print Batterylevels:</Label>
 					<List>
+							<Option value="sortDevName"	    >sort  dev name</Option>
+							<Option value="onlyLess101"	    >all</Option>
 							<Option value="onlyLess60"	    >only less than 60%</Option>
 							<Option value="onlyLess50"	    >only less than 50%</Option>
 							<Option value="onlyLess40"	    >only less than 40%</Option>
