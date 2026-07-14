@@ -1,3 +1,37 @@
+Added features / changes in v2022.22.47 @ 2026-07-07
+===================================================
+bug fix audit (plugin.py, mkbackup.py, myLogPgms.py):
+
+1.  fixed self.quitNOW typo (plugin would not stop when no python found)
+2.  fixed MAC temperature print in Fahrenheit ("{%.1f}" mixed %/format -> crash)
+3.  fixed NameError zwave in print triggers (zwave triggers never classified)
+4.  fixed py3 crash writing zWave.dot graphviz file (bytes written to text file)
+5.  removed dead duplicate buttonConfirmPluginCALLBACK definition
+6.  fixed plugData check in addremovePlugin (checked dict instead of entry)
+7.  fixed CPU sub-process bookkeeping using modified plugID key
+8.  calcCPU now handles HH:MM:SS ps times (was returning minutes only)
+9.  fixed printSQLaction var branch using undefined devId instead of varId
+10. fixed thesplit/theSplit typo (SQLValueOutput not set when separator used)
+11. fixed undefined "out" in print # of records error path (aborted listing)
+12. triggerEvent now also matches event type id -> "badBackup" trigger fires
+13. battery level print no longer crashes on float/None battery states
+14. backup test table now picked even if fewer than 3 variables exist
+15. mkbackup.py: added missing json + traceback imports (pruneVariables/pruneDevices files were silently ignored)
+16. mkbackup.py: retcodes file name fixed (errors were never reported back to plugin)
+17. mkbackup.py: create ~/indigo/Utilities/ if missing, fixed exception handler crashes
+18. myLogPgms.py: fixed logfile rotation (renamed .log twice, lost -1 file)
+19. myLogPgms.py: fixed py3 crash writing to plugin logfile (bytes written to text file) - logfile option works again
+20. create Logs/Plugins/<pluginId>/ dir at startup if missing
+21. versionCheck.py: fallback LooseVersion class when distutils is missing (removed in python 3.12+, plugin would not load)
+22. removed py2 leftovers in all .py files: unicode() calls -> str(), u"" string prefixes, and the try/except unicode shims
+
+
+Added features / changes in v2022.22.46 @ 2026-02/14
+===================================================
+in py2 5/2 is an integer in py3 it is a float. In print plugin mem that messaed up the print. now fixed.
+
+
+
 Added features / changes in v2022.22.45 @ 2025-07-22
 ===================================================
 

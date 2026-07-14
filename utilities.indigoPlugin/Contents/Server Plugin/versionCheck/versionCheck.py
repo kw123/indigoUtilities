@@ -1,11 +1,27 @@
-from distutils.version import LooseVersion
+try:
+	from distutils.version import LooseVersion
+except ImportError:	 # distutils was removed in python 3.12+
+	class LooseVersion(object):
+		def __init__(self, vstring):
+			self.version = []
+			for part in str(vstring).replace("-", ".").split("."):
+				try:	self.version.append(int(part))
+				except:	self.version.append(0)
+		def _pad(self, other):
+			n = max(len(self.version), len(other.version))
+			return (self.version + [0]*(n-len(self.version)), other.version + [0]*(n-len(other.version)))
+		def __gt__(self, other):
+			a, b = self._pad(other)
+			return a > b
+		def __lt__(self, other):
+			a, b = self._pad(other)
+			return a < b
+		def __eq__(self, other):
+			a, b = self._pad(other)
+			return a == b
 import datetime
 import requests
 import sys
-try:
-	unicode("x")
-except:
-	unicode = str
 
 def versionCheck(pluginId,pluginVersion,indigo,theHourToCheckversion,theMinuteToCheckversion, printToLog="no",force =False):
     global lastDayversionCheck
@@ -20,7 +36,7 @@ def versionCheck(pluginId,pluginVersion,indigo,theHourToCheckversion,theMinuteTo
     lastDayversionCheck  = dd.day
 
     if printToLog =="log":
-        indigo.server.log("versionCheck for "+unicode(pluginId)+"  installed: "+unicode(pluginVersion))
+        indigo.server.log("versionCheck for "+str(pluginId)+"  installed: "+str(pluginVersion))
     
     # Create some URLs we'll use later on
     current_version_url = "https://api.indigodomo.com/api/v2/pluginstore/plugin-version-info.json?pluginId={}".format(pluginId)

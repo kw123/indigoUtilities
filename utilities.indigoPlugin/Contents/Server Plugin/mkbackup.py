@@ -4,10 +4,8 @@
 import time, datetime
 import sys, subprocess, os, pwd
 import operator
-try:
-	unicode("x")
-except:
-	unicode = str
+import json
+import traceback
 
 
 
@@ -17,14 +15,15 @@ def readPopen( cmd):
 			ret, err = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
 			return ret.decode('utf_8'), err.decode('utf_8')
 		except Exception as e:
-			self.exceptionHandler(40,e)
+			exceptionHandler(40,e)
+			return "", str(e)
 
 ####-----------------  exception logging ---------
 def exceptionHandler(level, exception_error_message):
 
 		try:
 			try: 
-				if u"{}".format(exception_error_message).find("None") >-1: return exception_error_message
+				if "{}".format(exception_error_message).find("None") >-1: return exception_error_message
 			except: 
 				pass
 
@@ -36,7 +35,7 @@ def exceptionHandler(level, exception_error_message):
 				myLog(10, log_message)
 			return "'{}'".format(log_message )
 		except Exception as e:
-			indigo.server.log( "{}".format(e))
+			print( "{}".format(e))
 
 ####----------------- print to logfile if > debuglevel ---------
 def myLog(debug,text):
@@ -64,7 +63,10 @@ def getIndigoPath(myPath):
 				 
 		found=False
 		indigoVersion = 0
-		if os.path.isdir(indigoPath): found = True
+		try:
+			if os.path.isdir(indigoPath): found = True
+		except NameError:
+			pass
 		if not found:
 			for indi in range(5,100):  # we are optimistic for the future of indigo, starting with V5
 				if found:
@@ -91,11 +93,11 @@ def doStepCopy(inFile, outFile):
 		myLog(255,"stepCopy cmd: "+ cmd)
 		out, err =readPopen(cmd)
 		if err == "": retCode = "0"
-		else: retCode=unicode(err).strip("\n")
+		else: retCode=str(err).strip("\n")
 	except:
 		retCode="1"    
 	myLog(255,"stepCopy seconds used      :" + str(int(time.time()-tt)) + ";  error= "+retCode)
-	logretCode("copy= ",unicode(retCode))
+	logretCode("copy= ",str(retCode))
 	return retCode
 
 ####----------------- doStepDump ---------
@@ -110,11 +112,11 @@ def doStepDump(inFile,outFile):
 		myLog(255,"stepDump cmd: "+ cmd)
 		out, err =readPopen(cmd)
 		if err=="": retCode= "0"
-		else: retCode=unicode(err).strip("\n")
+		else: retCode=str(err).strip("\n")
 	except:
 		retCode="1"    
 	myLog(255,"stepDump seconds used      :" + str(int(time.time()-tt)) + ";  error= "+retCode)
-	logretCode("dump= ",unicode(retCode))
+	logretCode("dump= ",str(retCode))
 	return retCode
 
 ####----------------- doStepDump ---------
@@ -132,11 +134,11 @@ def doStepTest(inFile,test):
 		myLog(255,"stepTest cmd: "+ cmd)
 		out, err =readPopen(cmd)
 		if err=="": retCode= "0"
-		else: retCode=unicode(err).strip("\n")
+		else: retCode=str(err).strip("\n")
 	except:
 		retCode="1"    
 	myLog(255,"stepTest seconds used      :" + str(int(time.time()-tt)) + ";  error= "+retCode)
-	logretCode("test= ",unicode(retCode))
+	logretCode("test= ",str(retCode))
 	return retCode
 
 
@@ -163,7 +165,7 @@ def	doStepRename(inFile,outFile,keep=""):
 	except:
 		retCode="1"    
 	myLog(255,"stepRename seconds used    :" + str(int(time.time()-tt)) + ";  error= "+retCode)
-	logretCode("rename= ",unicode(retCode))
+	logretCode("rename= ",str(retCode))
 	return retCode
 
 ####----------------- doStepRecreate ---------
@@ -180,9 +182,9 @@ def	doStepRecreate(inFile, outFile):
 		myLog(255,"stepRecreate cmd: " + cmd)
 		out, err =readPopen(cmd)
 		if err=="": retCode= "0"
-		else: retCode=unicode(err).strip("\n")
+		else: retCode=str(err).strip("\n")
 		myLog(255,"stepRecreate seconds used  :" + str(int(time.time()-tt)) + ";  error= "+retCode)
-		logretCode("recreate= ",unicode(retCode))
+		logretCode("recreate= ",str(retCode))
 		return retCode
 	except:
 		return "1"        
@@ -193,7 +195,7 @@ def	doStepCleanup(files):
 	try:
 		myLog(255," ")
 		logSteps("cleanup")
-		myLog(255,"stepCleanup files:         : "+ unicode(files) )
+		myLog(255,"stepCleanup files:         : "+ str(files) )
 		tt=time.time()
 		for file in files:
 			if os.path.isfile(indigoPath+file):
@@ -215,9 +217,9 @@ def	logSteps(text,finish=False):
 ####----------------- doStepRecreate ---------
 def logretCode(text,retCode):
 	global indigoPath, utilPath
-	try:    
+	try:
 		if retCode =="0": return "0"
-		f=open(utilPath+"retcode","a")
+		f=open(utilPath+"retcodes","a")
 		f.write(text+retCode+"\n")
 		f.close()
 	except:
@@ -374,7 +376,7 @@ def doStepfixDump(inFile,outFile):
 		retCode= "0"
 	except:
 		retCode= "1"
-	myLog(255,"stepCompress seconds used  :" +str(int(time.time()-tt)) + ";  error= "+unicode(retCode))
+	myLog(255,"stepCompress seconds used  :" +str(int(time.time()-tt)) + ";  error= "+str(retCode))
 	return retCode
 
 
@@ -540,7 +542,7 @@ def doStepCompress(inFile,outFile,pruneVariables="",pruneDevices={} ):
 		retCode= "0"
 	except:
 		retCode= "1"
-	myLog(255,"stepCompress seconds used  :" +str(int(time.time()-tt)) + ";  error= "+unicode(retCode))
+	myLog(255,"stepCompress seconds used  :" +str(int(time.time()-tt)) + ";  error= "+str(retCode))
 	return retCode
 
 
@@ -551,7 +553,8 @@ def doAllSteps(args,test,pruneVariables,pruneDevices):
 
 	if "backup" in args:
 				if doStepCopy(sqliteDB+".sqlite","a.cp")							!="0": return
-				if doStepTest("a.cp",test)											!="0": return
+				if test!="":
+					if doStepTest("a.cp",test)										!="0": return
 				for j in range(1,noOfBackupCopies):
 					i= noOfBackupCopies-j
 					doStepRename(sqliteDB+"-"+str(i)+".sqlite",sqliteDB+"-"+str(i+1)+".sqlite")
@@ -607,9 +610,12 @@ except:
 
 
 userName = pwd.getpwuid( os.getuid() )[ 0 ]
-MAChome  = os.path.expanduser(u"~")
+MAChome  = os.path.expanduser("~")
 
 utilPath = MAChome+"/indigo/Utilities/"
+if not os.path.isdir(utilPath):
+	try:	os.makedirs(utilPath)
+	except:	pass
 
 if os.path.isfile(utilPath+"backup.log"):
 	if os.path.getsize(utilPath+"backup.log")> 1000000:
@@ -653,11 +659,11 @@ if os.path.isfile(utilPath+"steps"):
 startF	=open(utilPath+"steps","w")
 
 
-print ("starting indigo sqlite utility job "+ str(datetime.datetime.now()) + " parameters " + unicode(arg1) +" "+ test)
+print ("starting indigo sqlite utility job "+ str(datetime.datetime.now()) + " parameters " + str(arg1) +" "+ test)
 print ("starting indigo sys.argv {}".format(sys.argv))
 tTotal=time.time()
 myLog(255,"----------------------------------------------------------------" )
-myLog(255,"starting indigo sqlite utility job "+ str(datetime.datetime.now()) + " parameters " + unicode(arg1) +" "+ test)
+myLog(255,"starting indigo sqlite utility job "+ str(datetime.datetime.now()) + " parameters " + str(arg1) +" "+ test)
 
 
 doAllSteps(arg1, test, pruneVariables, pruneDevices)

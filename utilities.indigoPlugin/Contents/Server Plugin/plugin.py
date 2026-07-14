@@ -14,11 +14,6 @@ import pstats
 import myLogPgms.myLogPgms 
 import traceback
 
-try:
-	unicode("a")
-except:
-	unicode = str
-
 import codecs
 
 
@@ -100,6 +95,9 @@ class Plugin(indigo.PluginBase):
 		if not os.path.isdir(self.indigoPreferencesPluginDir): 
 			os.mkdir(self.indigoPreferencesPluginDir)
 		self.indigoLogPluginDir 		= self.getInstallFolderPath+"Logs/Plugins/"+self.pluginId+"/"
+		if not os.path.isdir(self.indigoLogPluginDir):
+			try:	os.makedirs(self.indigoLogPluginDir)
+			except:	pass
 		
 		self.yourPassword	      		= self.pluginPrefs.get(		"yourPassword")
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
@@ -129,8 +127,8 @@ class Plugin(indigo.PluginBase):
 		elif os.path.isfile("/usr/bin/python2.7"):
 			self.pythonPath				= "/usr/bin/python2.7"
 		else:
-			self.errorLog("FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping INDIGOplotD")
-			self.quitNOW = "none of python versions 2.7 3.x is installed "
+			self.errorLog("FATAL error:  none of python versions 2.7 3.x is installed  ==>  stopping utilities")
+			self.quitNow = "none of python versions 2.7 3.x is installed "
 			return
 		indigo.server.log("using '" +self.pythonPath +"' for utility programs")
 
@@ -407,7 +405,7 @@ class Plugin(indigo.PluginBase):
 				#if line.find("ndigo") == -1: continue
 				items = line.split()
 				if len(items) < 7: continue
-				#self.ML.myLog( text=unicode(items))
+				#self.ML.myLog( text=str(items))
 				pCPU    = items[6]
 				pID     = items[1]
 				pType   = "plugin"
@@ -436,7 +434,7 @@ class Plugin(indigo.PluginBase):
 						else: version = ""
 
 					except  Exception as e:
-						if unicode(e).find("No such file or directory") > -1:
+						if str(e).find("No such file or directory") > -1:
 							plugId   = pName
 							version  = "noVer."
 						else:
@@ -485,7 +483,7 @@ class Plugin(indigo.PluginBase):
 							if subp[1] not in plugList[plugId]["subprocessesPid"]:   plugList[plugId]["subprocessesPid"][subp[1]] = {}
 							plugList[plugId]["subprocessesPid"][subp[1]] =  {"cpu":subp[6], "name":" ".join(subp[7:])}
 
-				#indigo.server.log (plugId+"  :" +unicode(plugList[plugId]))
+				#indigo.server.log (plugId+"  :" +str(plugList[plugId]))
 								
 		except  Exception as e:
 			self.exceptionHandler(40,e)
@@ -631,8 +629,8 @@ class Plugin(indigo.PluginBase):
 				val = "{}[r/m]".format(items[1].split(".")[0]) # only integer part
 			else:                        
 				t = float(items[1])
-				if self.cpuTempUnit == "F": 
-					val = "{%.1f}[ºF]".format(t*9./5 +32)
+				if self.cpuTempUnit == "F":
+					val = "{:.1f}[ºF]".format(t*9./5 +32)
 				else:
 					val = "{:.1f}[ºC]".format(t)
 			out += "{:30}:{}\n".format(items[0], val)
@@ -659,13 +657,13 @@ class Plugin(indigo.PluginBase):
 			mm = m.split()
 			try: int(mm[4])
 			except: continue
-			memList[mm[1]]= [mm[3],str(int(mm[4])/1024),str(int(mm[5])/1024)] # %mem,virt mem, real mem in MB
-			#indigo.server.log(unicode( memList[mm[1]]))
+			memList[mm[1]] = [mm[3], int(int(mm[4])/(1024)), int(int(mm[5])/(1024))] # %mem, virt mem, real mem in MB
+			#indigo.server.log(str( memList[mm[1]]))
 
 		fileList = self.getOpenFiles()
 		plugList = self.getActivePlugins(psef)
 		
-		out = [U"\n    PID    CPU-total  Mem-% -Virt   -Real   version    pluginName ------------------------  .. + sub processes and non std open files \n"]
+		out = ["\n    PID    CPU-total  Mem-%  -Virt-  -Real   version    pluginName ------------------------  .. + sub processes and non std open files     (Mem size in KB)\n"]
 		for plID in  plugList:
 			item = plugList[plID]
 			try:
@@ -674,7 +672,7 @@ class Plugin(indigo.PluginBase):
 				pCPU    = item["cpu"]
 				pID     = item["pid"]
 				version = item["version"]
-				if pID in memList:    mem = "{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+				if pID in memList:    mem = "{:<6}{:7,d}{:7,d}".format(memList[pID][0], memList[pID][1], memList[pID][2])
 				else:                 mem = " ".rjust(18)
 				out.append( "{:>7}{:>11}    {}  {:10} {}\n".format(pID, pCPU, mem, version, pName) )
 				ret2 = []
@@ -689,7 +687,7 @@ class Plugin(indigo.PluginBase):
 					if len(name) < 10: continue
 					dCPU = items2["cpu"]
 					doughterProcess= "            SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
-					if pID in memList:	mem = "{:<6}{:<7} {:<6}".format(memList[pID][0], memList[pID][1], memList[pID][2])
+					if pID in memList:	mem = "{:<6}{:7,d}{:7,d}".format(memList[pID][0], int(int(memList[pID][1])/1024), int(int(memList[pID][2])/1024))
 					else:				mem = " ".rjust(18)
 					out.append( "{:>7}{:>11}    {}  {}\n".format(dPID, dCPU, mem, doughterProcess))
 				if pID in fileList and len(fileList[pID]) > 0:
@@ -736,7 +734,9 @@ class Plugin(indigo.PluginBase):
 			theList = []
 			for dev in indigo.devices:
 				if "batteryLevel" in dev.states:
-					theList.append([dev.states["batteryLevel"], dev.id, dev.name, str(dev.enabled)] )
+					try:	batteryLevel = int(float(dev.states["batteryLevel"]))
+					except:	batteryLevel = -1
+					theList.append([batteryLevel, dev.id, dev.name, str(dev.enabled)] )
 
 			if whatToDo == "sortDevName":
 				useList = sorted(theList, key=lambda a: (a[2], a[0]))
@@ -770,7 +770,7 @@ class Plugin(indigo.PluginBase):
 
 		triggers={}
 		for trig in indigo.triggers:
-			#self.ML.myLog( text="tr id "+ unicode(trig.id))
+			#self.ML.myLog( text="tr id "+ str(trig.id))
 			tId= str(trig.id)
 			tName=trig.name
 			triggers[tName]={}
@@ -783,27 +783,27 @@ class Plugin(indigo.PluginBase):
 			
 			type=""
 			try:
-				triggers[tName]["id2"]=unicode(trig.variableId)
+				triggers[tName]["id2"]=str(trig.variableId)
 				triggers[tName]["vdName"]=indigo.variables[trig.variableId].name
 				triggers[tName]["type"]="variable"
 				type="variable"
 			except:
 				pass
 			try:
-				triggers[tName]["id2"]=unicode(trig.interface)
+				triggers[tName]["id2"]=str(trig.interface)
 				type="Interface"
 				triggers[tName]["type"]="interface"
 			except:
 				pass
 			try:
-				triggers[tName]["id2"]=unicode(trig.pluginId)
-				triggers[tName]["vdName"]=unicode(trig.pluginTypeId)
+				triggers[tName]["id2"]=str(trig.pluginId)
+				triggers[tName]["vdName"]=str(trig.pluginTypeId)
 				type="plugin"
 				triggers[tName]["type"]="plugin"
 			except:
 				pass
 			try:
-				triggers[tName]["id2"]=unicode(trig.emailFilter)
+				triggers[tName]["id2"]=str(trig.emailFilter)
 				type="email"
 			except:
 				pass
@@ -812,29 +812,29 @@ class Plugin(indigo.PluginBase):
 
 			if type == "variable":
 				try:
-					triggers[tName]["other"]+= "chgType: "+ unicode(trig.variableChangeType)
-					triggers[tName]["other"]+= "-- compareTo: "+ unicode(trig.variableValue)
+					triggers[tName]["other"]+= "chgType: "+ str(trig.variableChangeType)
+					triggers[tName]["other"]+= "-- compareTo: "+ str(trig.variableValue)
 				except:
 					pass    
 			elif type == "interface":
 				pass
 			elif type == "email":
 				try:
-					triggers[tName]["vdName"]="from: "+unicode(trig.emailFrom)
-					triggers[tName]["other"] ="Subj: "+unicode(trig.emailSubject)
+					triggers[tName]["vdName"]="from: "+str(trig.emailFrom)
+					triggers[tName]["other"] ="Subj: "+str(trig.emailSubject)
 					triggers[tName]["type"]  ="emailIncoming"
 				except:
 					pass
 			elif type == "plugin":
 				try:
-					triggers[tName]["vdName"]=unicode(trig.pluginTypeId)
+					triggers[tName]["vdName"]=str(trig.pluginTypeId)
 					triggers[tName]["type"]="plugin"
 					try:
-						triggers[tName]["other"]+= unicode(trig.globalProps[trig.pluginId]["description"])
+						triggers[tName]["other"]+= str(trig.globalProps[trig.pluginId]["description"])
 						#triggers[tName]["vdName"]+= ";  targedev "+ indigo.devices[int(trig.globalProps[trig.pluginId]["targetDev"])].name
 					except:
 						pass    
-					if  unicode(trig.pluginTypeId).find(zwave)>-1:
+					if  str(trig.pluginTypeId).find("zwave")>-1:
 						triggers[tName]["type"]="device-Zwave"
 				except:
 					pass
@@ -842,21 +842,21 @@ class Plugin(indigo.PluginBase):
 			else:  ## must be device
 				type="device"
 				try:
-					triggers[tName]["id2"]=unicode(trig.deviceId)
+					triggers[tName]["id2"]=str(trig.deviceId)
 					triggers[tName]["vdName"]+=indigo.devices[trig.deviceId].name
 					triggers[tName]["type"]="device"
 				except:
 					pass    
 
 			try:
-				triggers[tName]["other"]+= "cmd: "+ unicode(trig.command)
-				triggers[tName]["other"]+= "-- button/Group: "+ unicode(trig.buttonOrGroup)
+				triggers[tName]["other"]+= "cmd: "+ str(trig.command)
+				triggers[tName]["other"]+= "-- button/Group: "+ str(trig.buttonOrGroup)
 			except:
 				pass    
 			try:
-				triggers[tName]["other"]+= "state: "+ unicode(trig.stateSelector)
-				triggers[tName]["other"]+= "-- changeType: "+ unicode(trig.stateChangeType)
-				triggers[tName]["other"]+= "-- compareTo: "+ unicode(trig.stateValue)
+				triggers[tName]["other"]+= "state: "+ str(trig.stateSelector)
+				triggers[tName]["other"]+= "-- changeType: "+ str(trig.stateChangeType)
+				triggers[tName]["other"]+= "-- compareTo: "+ str(trig.stateValue)
 			except:
 				pass    
 
@@ -877,7 +877,7 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log("\n                 ============== Print zwave info of devices to logfile =============" ," ")
 		nList=[]
 		for dev in indigo.devices:
-			if unicode(dev.protocol).find("ZWave")==-1:	continue
+			if str(dev.protocol).find("ZWave")==-1:	continue
 			if "com.perceptiveautomation.indigoplugin.zwave" not in dev.globalProps:
 				indigo.server.log(" zwave not working for device" + dev.name)
 				continue
@@ -896,12 +896,12 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log("creating .dot file for GRAPHVIZ" )
 		nList=[]
 		for dev in indigo.devices:
-			if unicode(dev.protocol).find("ZWave")==-1:	continue
+			if str(dev.protocol).find("ZWave")==-1:	continue
 			if "com.perceptiveautomation.indigoplugin.zwave" not in dev.globalProps: continue
 			if "zwNodeNeighborsStr" not in dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]: continue
-			neighb = unicode(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
+			neighb = str(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["zwNodeNeighborsStr"])
 			if len(neighb)< 1: continue
-			address= unicode(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"]).rjust(4)
+			address= str(dev.globalProps["com.perceptiveautomation.indigoplugin.zwave"]["address"]).rjust(4)
 			for out in neighb.split(", "):
 				nList.append((address,dev.name,out.rjust(4)))
 		
@@ -913,12 +913,12 @@ class Plugin(indigo.PluginBase):
 		currentDev=""
 		for out in nList:
 				if currentDev==out[0]: continue
-				###indigo.server.log(unicode(out))
-				f.write(("    "+(out[0])+" [label=\""+unicode(out[0]).lstrip()+" - "+(out[1])+"\"]\n").encode("utf-8"))
+				###indigo.server.log(str(out))
+				f.write("    "+(out[0])+" [label=\""+str(out[0]).lstrip()+" - "+(out[1])+"\"]\n")
 				currentDev=out[0]
 		for out in nList:
 			if out[2].find("none")==-1:
-				f.write(("        "+out[0]+" ->"+out[2]+";\n").encode("utf-8"))
+				f.write("        "+out[0]+" ->"+out[2]+";\n")
 		f.write("}\n")
 		f.close()
 		indigo.server.log(    "Created graphviz input file:   \""+self.userIndigoPluginDir+"zWave.dot\"")
@@ -1073,8 +1073,8 @@ class Plugin(indigo.PluginBase):
 		ii=0
 		for var in indigo.variables:
 			ii+=1
-			if ii==3:  ## pick the third variable
-				test = "variable_history_"+str(var.id)
+			test = "variable_history_"+str(var.id) ## pick the third variable, or the last one if fewer exist
+			if ii==3:
 				break
 		cmd=self.pythonPath+ " '"+self.indigoPath+"Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' "+mode+" "+test+" "+self.noOfBackupCopies
 		self.ML.myLog( text="starting SQLite job "+cmd )
@@ -1116,16 +1116,6 @@ class Plugin(indigo.PluginBase):
 
 
 
-####-----------------             ---------
-	def buttonConfirmPluginCALLBACK(self,valuesDict="",typeId="", targetId=0):
-		if valuesDict["devOrVar"] =="dev":
-			valuesDict["msg"]="select device"
-		else:
-			valuesDict["msg"]="select variable"
-		
-		return valuesDict
-
-
 ######################################################################################
 	####-----------------  event trigger fior cpu of plugin > xx
 ######################################################################################
@@ -1165,6 +1155,7 @@ class Plugin(indigo.PluginBase):
 		return valuesDict
 	####-----------------  ---------
 	def buttonConfirmPluginCALLBACK(self, valuesDict=None, typeId="", eventId=0):
+		plug = ""
 		if valuesDict["newOrExistingPlugin"]  == "new":
 			plug  = valuesDict["selectNewPlugin"]
 		if valuesDict["newOrExistingPlugin"]  == "existing":
@@ -1231,7 +1222,7 @@ class Plugin(indigo.PluginBase):
 						self.PLUGINSusedForCPUlimts[plugID] = {"evID":0, "lastCPU":0, "lastCPUsub":{}, "lastTime":0, "cpuThreshold": 99999999999, "plugData":plugList[plugID]}
 				if plugID in self.PLUGINSusedForCPUlimts:
 					if plugID in plugList:
-						if "plugData" not in self.PLUGINSusedForCPUlimts:
+						if "plugData" not in self.PLUGINSusedForCPUlimts[plugID]:
 							self.PLUGINSusedForCPUlimts[plugID]["plugData"]= plugList[plugID]
 						if "lastCPUsub" not in self.PLUGINSusedForCPUlimts[plugID]:
 							self.PLUGINSusedForCPUlimts[plugID]["lastCPUsub"]= {}
@@ -1282,19 +1273,12 @@ class Plugin(indigo.PluginBase):
 				factor    = max(0.01,deltaT/100.)
 				deltaCPU  = max(0, (cpu - self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) / factor )
 				totalDelta += deltaCPU
-				if self.ML.decideMyLog("Logic"): self.ML.myLog( text="plugID: "+plugID+"  cpu: "+ unicode(cpu)+";  deltaCPU: "+unicode(deltaCPU)+";  deltaT: "+unicode(deltaT) +";  lastCPU: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ unicode(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
+				if self.ML.decideMyLog("Logic"): self.ML.myLog( text="plugID: "+plugID+"  cpu: "+ str(cpu)+";  deltaCPU: "+str(deltaCPU)+";  deltaT: "+str(deltaT) +";  lastCPU: "+ str(self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]) +";  cpuThreshold: "+ str(self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]) )
 				if deltaCPU > self.PLUGINSusedForCPUlimts[plugID]["cpuThreshold"]:
 					if self.ML.decideMyLog("Logic"): self.ML.myLog( text="triggering > threshold for "+plugID )
 					self.triggerEvent(self.PLUGINSusedForCPUlimts[plugID]["evID"])
 				self.PLUGINSusedForCPUlimts[plugID]["lastTime"] = time.time()
 				self.PLUGINSusedForCPUlimts[plugID]["lastCPU"]  = cpu
-
-					
-				# store result in variable CPU_usage_short_plugID
-				plugID = plugID.replace(" ","-")
-				ss = plugID.split(".")
-				plugidShort = ""
-
 
 
 				deltaCPUsub = 0
@@ -1318,6 +1302,10 @@ class Plugin(indigo.PluginBase):
 
 
 
+				# store result in variable CPU_usage_short_plugID
+				plugID = plugID.replace(" ","-")
+				ss = plugID.split(".")
+				plugidShort = ""
 				for n in range(2,len(ss)):
 					if ss[n] in ["com","org","net","perceptiveautomation","indigoplugin","indiPref"]: continue
 					plugidShort+=ss[n]+"."
@@ -1349,10 +1337,12 @@ class Plugin(indigo.PluginBase):
 ####-----------------   for menue aded --- lines          ---------
 	def calcCPU(self, cpu):
 		newCPU = cpu.split(":")
-		if len(newCPU) ==2:
-			cpu = float(newCPU[0])*60 + float(newCPU[1]) 
+		if len(newCPU) ==3:
+			cpu = float(newCPU[0])*3600 + float(newCPU[1])*60 + float(newCPU[2])
+		elif len(newCPU) ==2:
+			cpu = float(newCPU[0])*60 + float(newCPU[1])
 		else:
-			cpu =  float(newCPU[1])
+			cpu =  float(newCPU[0])
 		return cpu
 	 
 ####-----------------   for menue aded --- lines          ---------
@@ -1382,7 +1372,7 @@ class Plugin(indigo.PluginBase):
 
 ####-----------------   create list of devcies that have states          ---------
 	def filterDevices(self,filter="",valuesDict="",typeId="",devId=""):
-		retList=[]
+		retList = []
 		for dev in indigo.devices:
 			for state in dev.states.keys():
 				retList.append((dev.id, dev.name))# if we are here we found a state that can be selected
@@ -1396,7 +1386,7 @@ class Plugin(indigo.PluginBase):
 
 ####-----------------   pickDeviceCALLBACK          ---------
 	def pickDeviceCALLBACK(self,valuesDict="",typeId="",devId=""):
-		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=unicode(valuesDict))
+		if self.ML.decideMyLog("Logic"): self.ML.myLog( text=str(valuesDict))
 		self.devID= int(valuesDict["device"])
 		self.varID= 0
 		valuesDict["msg"]="select states for device selected"
@@ -1486,7 +1476,7 @@ class Plugin(indigo.PluginBase):
 						self.ML.myLog( text="pruneDevsandVarsaction  device "+valuesDict["device"]+ " does not exist")
 						return    
 
-			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="pruneDevsandVarsaction  "+unicode(valuesDict))
+			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="pruneDevsandVarsaction  "+str(valuesDict))
 			self.executePruneDatabase(valuesDict,test=False)
 		
 		except Exception as e:
@@ -1759,7 +1749,7 @@ class Plugin(indigo.PluginBase):
 	def printSQLaction(self,action):
 		try:
 			valuesDict=action.props
-			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="printSQLaction  "+unicode(valuesDict))
+			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="printSQLaction  "+str(valuesDict))
 
 
 			if "id"			not in valuesDict: valuesDict["id"] =""
@@ -1807,7 +1797,7 @@ class Plugin(indigo.PluginBase):
 			elif valuesDict["devOrVar"] =="var":
 				varId = valuesDict["variable"]
 				try:
-					self.varID= int(devId)
+					self.varID= int(varId)
 					valuesDict["variable"] = self.varID
 					valuesDict["device"] =0
 					self.devID= 0
@@ -1850,7 +1840,7 @@ class Plugin(indigo.PluginBase):
 			var=""
 			valuesDict["msg"]=""
 			states=["","","","","","","","","","","","","","",""]
-			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="executeCALLBACK valuesDict: "+unicode(valuesDict))
+			if self.ML.decideMyLog("Logic"): self.ML.myLog( text="executeCALLBACK valuesDict: "+str(valuesDict))
 			if valuesDict["devOrVar"]=="dev":
 				if self.devID !=0:
 					varId=0
@@ -2157,7 +2147,7 @@ class Plugin(indigo.PluginBase):
 						else:
 							theSplit = lines[nn].split(separator)
 							if len(theSplit) >2:
-								value1 = thesplit[2]
+								value1 = theSplit[2]
 							else:
 								value1=  lines[nn] 
 						indigo.variable.updateValue("SQLValueOutput",value1)
@@ -2212,7 +2202,7 @@ class Plugin(indigo.PluginBase):
 						sqlCommandText= pgm+ " \"SELECT COUNT(*) FROM device_history_"+str(id)+";\""
 						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
 						ret, err = self.readPopen(sqlCommandText)
-						#self.ML.myLog( text=name+" "+ unicode(out))
+						#self.ML.myLog( text=name+" "+ str(out))
 						if err.find("is locked")>-1:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
 							self.sleep(0.5)
@@ -2247,7 +2237,7 @@ class Plugin(indigo.PluginBase):
 								self.sleep(0.5)
 								ret, err = self.readPopen(sqlCommandText)
 						if len(err) >0:
-								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base: "+ unicode(out[1]) )
+								if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base: {}".format(err) )
 						
 						try:
 							ii = int(ret.strip("\n"))
@@ -2556,7 +2546,7 @@ class Plugin(indigo.PluginBase):
 		for trigId in self.triggerList:
 			#self.myLog(4, "<<-- trigId: %s " % trigId)
 			trigger = indigo.triggers[trigId]
-			if trigId == eventId:
+			if trigId == eventId or trigger.pluginTypeId == eventId:
 				indigo.trigger.execute(trigger)
 		return
 
@@ -2632,6 +2622,7 @@ class Plugin(indigo.PluginBase):
 		if len(inPath) == 0: return ""
 		if inPath == " ":	 return ""
 		if inPath[-1] !="/": inPath +="/"
+		return inPath
 
 
 
