@@ -82,13 +82,13 @@
 	</Action>
 	
 	<Action id="executeBACKUPpostgresAction">
-		<Name>Create dumpfile of the postgres db in indigoUtilities directory</Name>
-		<Label>Create dumpfile.zip file of the postgres db in indigoUtilities directory</Label>
+		<Name>Create dumpfile of the postgres db in ~/indigo/utilities/</Name>
+		<Label>Create dumpfile.zip file of the postgres db in ~/indigo/utilities/</Label>
 		<CallbackMethod>executeBACKUPpostgresAction</CallbackMethod>
 	</Action>
 	
 	<Action id="IndigoBackup">
-		<Name>Create a backup of the indigo config files and config database in indigoUtilities directory</Name>
+		<Name>Create a backup of the indigo config files and config database in ~/indigo/utilities/</Name>
 		<CallbackMethod>executeBACKUPindigoAction</CallbackMethod>
 	</Action>
 
@@ -253,7 +253,7 @@
 					type="textfield"
 					defaultValue=""
 					tooltip="">
-					<Label>print to file ( in ~Documents/utilities/ empty=Indigo Log):</Label>
+					<Label>print to file ( in ~/indigo/utilities/ empty=Indigo Log):</Label>
 				</Field>
 		
 				<Field

@@ -13,7 +13,7 @@ import traceback
 def readPopen( cmd):
 		try:
 			ret, err = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-			return ret.decode('utf_8'), err.decode('utf_8')
+			return ret.decode('utf_8', 'replace'), err.decode('utf_8', 'replace')
 		except Exception as e:
 			exceptionHandler(40,e)
 			return "", str(e)
@@ -22,11 +22,6 @@ def readPopen( cmd):
 def exceptionHandler(level, exception_error_message):
 
 		try:
-			try: 
-				if "{}".format(exception_error_message).find("None") >-1: return exception_error_message
-			except: 
-				pass
-
 			filename, line_number, method, statement = traceback.extract_tb(sys.exc_info()[2])[-1]
 			#module = filename.split('/')
 			log_message = "'{}'".format(exception_error_message )
@@ -612,7 +607,7 @@ except:
 userName = pwd.getpwuid( os.getuid() )[ 0 ]
 MAChome  = os.path.expanduser("~")
 
-utilPath = MAChome+"/indigo/Utilities/"
+utilPath = MAChome+"/indigo/utilities/"   # must match plugin.py self.userIndigoPluginDir
 if not os.path.isdir(utilPath):
 	try:	os.makedirs(utilPath)
 	except:	pass

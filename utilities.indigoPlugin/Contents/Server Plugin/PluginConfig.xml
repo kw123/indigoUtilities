@@ -14,7 +14,7 @@
     <Field    id="logFileActive2"   type="menu"      defaultValue="standard" > <Label> send logs to ..:</Label>
         <List>
             <Option value="standard" > no special utilities logfile, std indigo logfile</Option>
-            <Option value="indigo"   > .. Perceptive Automation/Indigo x/Logs/com.karlwachs.utilities/plugin.log </Option>
+            <Option value="indigo"   > .. Perceptive Automation/Indigo x/Logs/Plugins/com.karlwachs.utilities/plugin.log </Option>
         </List>
     </Field>
 

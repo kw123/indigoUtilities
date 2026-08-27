@@ -15,6 +15,8 @@ import myLogPgms.myLogPgms
 import traceback
 
 import codecs
+import ctypes
+import re
 
 
 '''
@@ -99,7 +101,7 @@ class Plugin(indigo.PluginBase):
 			try:	os.makedirs(self.indigoLogPluginDir)
 			except:	pass
 		
-		self.yourPassword	      		= self.pluginPrefs.get(		"yourPassword")
+		self.yourPassword	      		= self.pluginPrefs.get(		"yourPassword",		"")
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
 		self.enccodingChar      		= self.pluginPrefs.get(		"enccodingChar","utf-8")
 		self.userName           		= pwd.getpwuid( os.getuid() )[ 0 ]
@@ -120,6 +122,12 @@ class Plugin(indigo.PluginBase):
 		self.varID 						= 0
 		self.quitNow					= "" # set to !="" when plugin should exit ie to restart, needed for subscription -> loop model
 		self.printNumberOfRecords 		= 0
+		self.detailSampleSecs			= 120	# how long "detailed info for one plugin" samples cpu/memory
+		self.detailSampleEvery			= 2		# ps %CPU covers roughly the last 2 seconds
+		self.pluginDetailQueue			= []	# plugins waiting for a detailed report, they run one after the other
+		self.pluginDetailRunning		= ""	# the one being sampled right now
+		try:	self.libSystem				= ctypes.CDLL("/usr/lib/libSystem.dylib")	# for proc_pid_rusage = disk io per process
+		except:	self.libSystem				= None
 		if os.path.isfile("/Library/Frameworks/Python.framework/Versions/Current/bin/python3"):
 			self.pythonPath				= "/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
 		elif os.path.isfile("/usr/local/bin/python"):
@@ -370,6 +378,29 @@ class Plugin(indigo.PluginBase):
 		self.taskList ="printBatterylevels;"+valuesDict.get("batteryLevelWhatToprint")
 		indigo.server.log("command: print battery levels  {}".format(self.taskList ))
 		return 
+
+####-----------------  detailed info for ONE plugin, sampling runs in the concurrent thread ---------
+	def printPluginDetailStart(self, valuesDict="", typeId="", devId=""):
+		try:	plugID = valuesDict.get("pluginForDetail","")
+		except:	plugID = ""
+		if len(plugID) < 3:
+			self.ML.myLog( text="detailed plugin info: no plugin selected", errorType="smallErr")
+			return valuesDict
+
+		if plugID == self.pluginDetailRunning:
+			indigo.server.log("detailed info for '{}' is being sampled right now, please wait for the report".format(plugID))
+			return valuesDict
+		if plugID in self.pluginDetailQueue:
+			indigo.server.log("detailed info for '{}' is already waiting in the queue".format(plugID))
+			return valuesDict
+
+		self.pluginDetailQueue.append(plugID)
+		ahead = len(self.pluginDetailQueue) - 1 + int(self.pluginDetailRunning != "")
+		if ahead > 0:
+			indigo.server.log("detailed info for '{}' queued, {} report(s) run first, each takes {} seconds".format(plugID, ahead, self.detailSampleSecs))
+		else:
+			indigo.server.log("detailed info for '{}' requested, sampling cpu and memory for {} seconds, output follows after that ...".format(plugID, self.detailSampleSecs))
+		return valuesDict
 
 ####-----------------  print device / variable states .. ---------
 	def printmakepluginDateList(self, menuId="", xx=""):
@@ -652,6 +683,7 @@ class Plugin(indigo.PluginBase):
 		indigo.server.log("starting print plugin names, id, mem cpu  daughter processes . . . takes a little time,  using lsof, ps -ef, ps aux")
 		psaux  = self.getPSAUX()
 		psef   = self.getPSEF(grep="ndigo")
+		etimeList = self.getElapsedTimes()
 		memList ={}
 		for m in psaux.split("\n"):
 			mm = m.split()
@@ -663,7 +695,15 @@ class Plugin(indigo.PluginBase):
 		fileList = self.getOpenFiles()
 		plugList = self.getActivePlugins(psef)
 		
-		out = ["\n    PID    CPU-total  Mem-%  -Virt-  -Real   version    pluginName ------------------------  .. + sub processes and non std open files     (Mem size in KB)\n"]
+		## one format for header and data lines, so the columns can not drift apart
+		lineFormat = "{:>7}{:>11}{:>11}{:>12}    {:<6}{:>10}{:>8}  {:<12} {}"
+		header     = lineFormat.format("PID", "CPU-total","run-time","ave_cpu",   "Mem-%", "Virtual","Real","version",  "pluginName -------------------------------")+"\n"
+		header    += lineFormat.format("unix","hh:mm:ss", "hh:mm:ss","cpu/100sec","of MAC","MB",     "MB",  "installed",".. + sub processes and non std open files")
+		legend     = "ave_cpu = cpu seconds used per 100 seconds of run time, average since the process started (same unit as the CPU_usage_.. variables; 100 = one full cpu core)"
+		nameColumn = len(lineFormat.format("","","","","","","","",""))   # where pluginName starts
+
+		out      = ["\n"+legend+"\n"+header+"\n"]
+		sortList = []
 		for plID in  plugList:
 			item = plugList[plID]
 			try:
@@ -672,9 +712,16 @@ class Plugin(indigo.PluginBase):
 				pCPU    = item["cpu"]
 				pID     = item["pid"]
 				version = item["version"]
-				if pID in memList:    mem = "{:<6}{:7,d}{:7,d}".format(memList[pID][0], memList[pID][1], memList[pID][2])
-				else:                 mem = " ".rjust(18)
-				out.append( "{:>7}{:>11}    {}  {:10} {}\n".format(pID, pCPU, mem, version, pName) )
+				if pID in memList:    mem = [memList[pID][0], "{:,d}".format(memList[pID][1]), "{:,d}".format(memList[pID][2])]
+				else:                 mem = ["","",""]
+				aveP    = self.aveCPU(pCPU, pID, etimeList)
+				out.append( lineFormat.format(pID, self.cpuTime(pCPU), self.runTime(pID, etimeList), aveP, mem[0], mem[1], mem[2], version, pName)+"\n" )
+				## [ sort key, cpu incl sub processes, name, own ave_cpu ];  no data sorts to the end
+				sortEntry = [-1., 0., pName, aveP]
+				if aveP != "":
+					sortEntry[0] = float(aveP)
+					sortEntry[1] = float(aveP)
+				sortList.append(sortEntry)
 				ret2 = []
 				for line in psef.split("\n"):
 					if (" "+pID+" ") not in line: continue
@@ -686,15 +733,29 @@ class Plugin(indigo.PluginBase):
 					name = items2["name"]
 					if len(name) < 10: continue
 					dCPU = items2["cpu"]
-					doughterProcess= "            SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
-					if pID in memList:	mem = "{:<6}{:7,d}{:7,d}".format(memList[pID][0], int(int(memList[pID][1])/1024), int(int(memList[pID][2])/1024))
-					else:				mem = " ".rjust(18)
-					out.append( "{:>7}{:>11}    {}  {}\n".format(dPID, dCPU, mem, doughterProcess))
+					doughterProcess= "SubProcess: {}".format(name.replace("/Library/Application Support/Perceptive Automation/Indigo"," ..."))
+					if dPID in memList:	mem = [memList[dPID][0], "{:,d}".format(memList[dPID][1]), "{:,d}".format(memList[dPID][2])]
+					else:				mem = ["","",""]
+					aveD = self.aveCPU(dCPU, dPID, etimeList)
+					out.append( lineFormat.format(dPID, self.cpuTime(dCPU), self.runTime(dPID, etimeList), aveD, mem[0], mem[1], mem[2], "", doughterProcess)+"\n")
+					if aveD != "":                       ## sub process cpu counts towards its plugin
+						sortEntry[1] += float(aveD)
+						sortEntry[0]  = sortEntry[1]
 				if pID in fileList and len(fileList[pID]) > 0:
 					for ff in fileList[pID]:
-						out.append( "{:42}              openFile:{}\n".format(" ",ff))
+						out.append( "{:{}}openFile:{}\n".format(" ", nameColumn, ff))
 			except  Exception as e:
 				self.exceptionHandler(40,e)
+		out.append(header+"\n")     # repeat the header at the end of the list
+
+		## same numbers again, biggest cpu user first
+		sortFormat = "{:>9}{:>11}   {}"
+		out.append("\n\nplugins sorted by cpu usage, highest first;  ave_cpu in cpu seconds per 100 seconds of run time\n")
+		out.append(sortFormat.format("ave_cpu","incl.sub","pluginName -------------------------------")+"\n")
+		for xx in sorted(sortList, key=lambda x: -x[0]):
+			inclSub = ""
+			if xx[0] >= 0 and abs(xx[1]-float(xx[3] or 0)) > 0.005: inclSub = "{:.2f}".format(xx[1])
+			out.append(sortFormat.format(xx[3], inclSub, xx[2])+"\n")
 		indigo.server.log("".join(out))
 
 
@@ -725,6 +786,441 @@ class Plugin(indigo.PluginBase):
 				time.sleep(1.5)
 			self.ML.myLog( text="Plugin name -------------------    END")
 
+
+####-----------------  detailed info for ONE plugin: cpu/mem sampling + what it owns in indigo ---------
+	def printPluginDetail(self):
+		plugID = ""
+		try:
+			plugID                   = self.pluginDetailQueue.pop(0)
+			self.pluginDetailRunning = plugID
+
+			psef     = self.getPSEF(grep="ndigo")
+			plugList = self.getActivePlugins(psef)
+			if plugID not in plugList:
+				self.ML.myLog( text="detailed plugin info: '"+plugID+"' is not running", errorType="smallErr")
+				self.pluginDetailRunning = ""
+				return
+			item      = plugList[plugID]
+			pName     = item["plugName"]
+			pID       = item["pid"]
+			pids      = [pID] + [x for x in item["subprocessesPid"]]
+			etimeList = self.getElapsedTimes()
+
+			out  = ["\n================  detailed info for plugin  "+pName+"  ================"]
+			out.append("pluginId        : {}".format(plugID))
+			out.append("version         : {}      api: {}".format(item["version"], self.getPlistValue(pName,"ServerApiVersion")))
+			out.append("pid             : {}      sub processes: {}".format(pID, len(item["subprocessesPid"])))
+			out.append("run time        : {}      cpu total: {}".format(self.runTime(pID, etimeList), self.cpuTime(item["cpu"])))
+			try:
+				plug = indigo.server.getPlugin(plugID)
+				out.append("state           : enabled={}  running={}".format(plug.isEnabled(), plug.isRunning()))
+			except:
+				pass
+
+			####-----  sample cpu and memory, for the plugin AND for each sub process
+			every    = max(1, int(self.detailSampleEvery))
+			nSamples = max(1, int(self.detailSampleSecs / every))
+			series   = {}
+			for p in pids: series[p] = {"cpu":[], "rss":[], "vsz":[]}
+			total    = {"cpu":[], "rss":[], "vsz":[]}
+
+			## disk is a cheap syscall, network costs ~5 seconds per call so it is only read before and after
+			diskStart = {}
+			for p in pids: diskStart[p] = self.diskIO(p)
+			netStart  = self.netIO()
+			tStart    = time.time()
+			for n in range(nSamples):
+				ret, err = self.readPopen("/bin/ps -o pid=,pcpu=,rss=,vsz= -p " + ",".join(pids))
+				tCpu = 0.; tRss = 0; tVsz = 0
+				for line in ret.strip("\n").split("\n"):
+					vals = line.split()
+					if len(vals) != 4: continue
+					try:
+						p   = str(int(vals[0]))
+						cpu = float(vals[1])
+						rss = int(int(vals[2])/1024)
+						vsz = int(int(vals[3])/1024)
+					except:
+						continue
+					if p not in series: series[p] = {"cpu":[], "rss":[], "vsz":[]}
+					series[p]["cpu"].append(cpu); series[p]["rss"].append(rss); series[p]["vsz"].append(vsz)
+					tCpu += cpu; tRss += rss; tVsz += vsz
+				total["cpu"].append(tCpu); total["rss"].append(tRss); total["vsz"].append(tVsz)
+				self.sleep(every)
+
+			if len(total["cpu"]) > 0:
+				sampleFormat = "{:>7}{:>9}{:>9}  {:>8}{:>8}{:>8}  {:>10}   {}"
+				out.append(" ")
+				out.append("cpu and memory, {} samples, one every {} seconds;  cpu in % of ONE core (100 = one full core), memory in MB".format(len(total["cpu"]), every))
+				out.append(sampleFormat.format("PID","cpu-ave","cpu-max","mem-ave","mem-min","mem-max","virt-ave","process --------------------------------"))
+
+				cpu = self.aveMinMax(series.get(pID,{}).get("cpu",[]), 2)
+				mem = self.aveMinMax(series.get(pID,{}).get("rss",[]), 0)
+				vrt = self.aveMinMax(series.get(pID,{}).get("vsz",[]), 0)
+				out.append(sampleFormat.format(pID, cpu[0],cpu[2], mem[0],mem[1],mem[2], vrt[0], pName+"   (the plugin itself)"))
+
+				subs = []
+				for dPID in item["subprocessesPid"]:
+					aveCpu = 0.
+					if len(series.get(dPID,{}).get("cpu",[])) > 0:
+						aveCpu = sum(series[dPID]["cpu"])/len(series[dPID]["cpu"])
+					subs.append((aveCpu, dPID))
+				for aveCpu, dPID in sorted(subs, key=lambda x: -x[0]):
+					cpu  = self.aveMinMax(series.get(dPID,{}).get("cpu",[]), 2)
+					mem  = self.aveMinMax(series.get(dPID,{}).get("rss",[]), 0)
+					vrt  = self.aveMinMax(series.get(dPID,{}).get("vsz",[]), 0)
+					name = item["subprocessesPid"][dPID]["name"].replace("/Library/Application Support/Perceptive Automation/Indigo"," ...")
+					if len(series.get(dPID,{}).get("cpu",[])) < len(total["cpu"]):
+						name += "   (ended during sampling)"
+					out.append(sampleFormat.format(dPID, cpu[0],cpu[2], mem[0],mem[1],mem[2], vrt[0], "SubProcess: "+name))
+
+				cpu = self.aveMinMax(total["cpu"], 2)
+				mem = self.aveMinMax(total["rss"], 0)
+				vrt = self.aveMinMax(total["vsz"], 0)
+				out.append(sampleFormat.format("TOTAL", cpu[0],cpu[2], mem[0],mem[1],mem[2], vrt[0], "plugin + its sub processes"))
+
+				####-----  disk and network over the same window
+				netEnd  = self.netIO()
+				elapsed = max(1., time.time() - tStart)
+				ioFormat = "{:>7}{:>11}{:>10}  {:>11}{:>10}  {:>11}{:>10}  {:>11}{:>10}   {}"
+				out.append(" ")
+				out.append("disk and network over the last {:.0f} seconds, total and average per second".format(elapsed))
+				out.append(ioFormat.format("PID","disk-read","read/s","disk-write","write/s","net-in","in/s","net-out","out/s","process ------------------------"))
+				tot = [0,0,0,0]
+				for p in pids:
+					dRead = dWrite = None
+					if p in diskStart and diskStart[p][0] is not None:
+						nowRead, nowWrite = self.diskIO(p)
+						if nowRead is not None:
+							dRead  = max(0, nowRead  - diskStart[p][0])
+							dWrite = max(0, nowWrite - diskStart[p][1])
+					dIn = dOut = None
+					if p in netEnd:
+						dIn  = max(0, netEnd[p][0] - netStart.get(p,(0,0))[0])
+						dOut = max(0, netEnd[p][1] - netStart.get(p,(0,0))[1])
+					name = pName+"   (the plugin itself)"
+					if p != pID:
+						name = "SubProcess: "+item["subprocessesPid"][p]["name"].replace("/Library/Application Support/Perceptive Automation/Indigo"," ...")
+					if dRead is not None: tot[0] += dRead; tot[1] += dWrite
+					if dIn   is not None: tot[2] += dIn;   tot[3] += dOut
+					out.append(ioFormat.format(p,
+						self.fmtBytes(dRead)  if dRead  is not None else "n/a",
+						self.fmtBytes(dRead/elapsed)  if dRead  is not None else "",
+						self.fmtBytes(dWrite) if dWrite is not None else "n/a",
+						self.fmtBytes(dWrite/elapsed) if dWrite is not None else "",
+						self.fmtBytes(dIn)    if dIn    is not None else "no traffic",
+						self.fmtBytes(dIn/elapsed)    if dIn    is not None else "",
+						self.fmtBytes(dOut)   if dOut   is not None else "",
+						self.fmtBytes(dOut/elapsed)   if dOut   is not None else "",
+						name))
+				out.append(ioFormat.format("TOTAL", self.fmtBytes(tot[0]), self.fmtBytes(tot[0]/elapsed),
+					self.fmtBytes(tot[1]), self.fmtBytes(tot[1]/elapsed),
+					self.fmtBytes(tot[2]), self.fmtBytes(tot[2]/elapsed),
+					self.fmtBytes(tot[3]), self.fmtBytes(tot[3]/elapsed), "plugin + its sub processes"))
+				out.append("disk from proc_pid_rusage (same user processes only), network from nettop (only processes that had traffic)")
+
+			####-----  devices, triggers, actions, props
+			out += self.pluginDevicesInfo(plugID)
+			out += self.pluginTriggersInfo(plugID)
+			out += self.pluginActionsInfo(pName)
+			out += self.pluginVariablesInfo(pName)
+			if len(self.pluginDetailQueue) > 0:
+				out.append("still waiting for a detailed report: {}".format(", ".join(self.pluginDetailQueue)))
+			out.append("================  end of detailed info for  "+pName+"  ================")
+			indigo.server.log("\n".join(out))
+
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+		self.pluginDetailRunning = ""
+		return
+
+####-----------------  bytes as a short readable string ---------
+	def fmtBytes(self, n):
+		try:
+			n = float(n)
+			for unit in ["B","kB","MB","GB"]:
+				if abs(n) < 1024. or unit == "GB":
+					if unit == "B": return "{:.0f}{}".format(n, unit)
+					return "{:.1f}{}".format(n, unit)
+				n = n / 1024.
+		except:
+			pass
+		return ""
+
+####-----------------  disk bytes read/written by ONE process, from proc_pid_rusage ---------
+	##  works without sudo but only for processes of the same user - which is what plugins are
+	def diskIO(self, pid):
+		try:
+			buf = ctypes.create_string_buffer(2048)		# RUSAGE_INFO_V4 is smaller, give it room
+			rc  = self.libSystem.proc_pid_rusage(ctypes.c_int(int(pid)), ctypes.c_int(4), ctypes.byref(buf))
+			if rc != 0: return None, None
+			raw = buf.raw
+			## 16 bytes uuid + 16 uint64 counters, then bytesread and byteswritten
+			read    = int.from_bytes(raw[144:152], "little")
+			written = int.from_bytes(raw[152:160], "little")
+			return read, written
+		except:
+			return None, None
+
+####-----------------  network bytes per pid, from nettop.  ~5 seconds per call, so use it sparingly ---------
+	def netIO(self):
+		netList = {}
+		try:
+			ret, err = self.readPopen("/usr/bin/nettop -P -L 1 -x -J bytes_in,bytes_out")
+			for line in ret.strip("\n").split("\n"):
+				items = line.strip().rstrip(",").split(",")
+				if len(items) < 3:      continue
+				if "." not in items[0]: continue
+				try:
+					pid = str(int(items[0].rsplit(".",1)[1]))
+					netList[pid] = (int(items[1]), int(items[2]))
+				except:
+					continue
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+		return netList
+
+####-----------------  variables a plugin creates / updates, read from its own python code ---------
+	##  indigo does not record which plugin owns a variable, so look at what the code actually does
+	def pluginVariablesInfo(self, pName):
+		out    = [" "]
+		names  = {}		# exact variable name       -> create/update/delete
+		expr   = {}		# name built at runtime     -> create/update/delete
+		source = {}		# exact name                -> where it was resolved from
+		try:
+			root = self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Server Plugin"
+			if not os.path.isdir(root):
+				out.append("variables       : source code of the plugin not found")
+				return out
+
+			####-----  read all python files once, keep them for resolving names later
+			allSrc = []
+			nFiles = 0
+			for dirPath, dirNames, fileNames in os.walk(root):
+				for fName in fileNames:
+					if not fName.endswith(".py"): continue
+					nFiles += 1
+					try:
+						f = open(os.path.join(dirPath,fName),"r", encoding="utf-8", errors="replace")
+						allSrc.append(f.read())
+						f.close()
+					except:
+						continue
+			src = "\n".join(allSrc)
+
+			####-----  collect the first argument of every variable call
+			dynamic = 0
+			for call, what in [("indigo.variable.create(","create"), ("indigo.variable.updateValue(","update"), ("indigo.variable.delete(","delete")]:
+				for part in src.split(call)[1:]:
+					arg = part.split(",")[0].split(")")[0].strip()
+					if len(arg) == 0: continue
+					lit, isPrefix = self.literalOrPrefix(arg)
+					if lit != "" and not isPrefix:					## "someName"
+						if lit not in names: names[lit] = []
+						if what not in names[lit]: names[lit].append(what)
+						continue
+					if lit != "" and isPrefix:						## "prefix"+something
+						arg = " ".join(arg.split())[:60]
+						if arg not in expr: expr[arg] = []
+						if what not in expr[arg]: expr[arg].append(what)
+						continue
+					## not a literal: follow  xxx = "...."  in the plugins own code
+					resolved = self.resolveVarName(arg, src)
+					if len(resolved) > 0:
+						for lit2, isPre2, via in resolved:
+							if isPre2:
+								key = '"'+lit2+'" (via '+arg+")"
+								if key not in expr: expr[key] = []
+								if what not in expr[key]: expr[key].append(what)
+							else:
+								if lit2 not in names: names[lit2] = []
+								if what not in names[lit2]: names[lit2].append(what)
+								source[lit2] = arg
+								if via != "": source[lit2] = arg+", set from "+via
+						continue
+					if arg.find("self.") == 0:						## plugin state we could not resolve
+						arg = " ".join(arg.split())[:60]
+						if arg not in expr: expr[arg] = []
+						if what not in expr[arg]: expr[arg].append(what)
+					else:											## var.name, dev.name, x[i] .. not a fixed variable
+						dynamic += 1
+
+			liveNames = []
+			for var in indigo.variables:
+				liveNames.append(var.name)
+
+			out.append("variables       : {} name(s) found in {} python files of the plugin (indigo does not store which plugin owns a variable)".format(len(names)+len(expr), nFiles))
+
+			for name in sorted(names):
+				value = "-- does not exist --"
+				if name in liveNames:
+					try:	value = "= "+str(indigo.variables[name].value)[:24]
+					except:	value = ""
+				elif name in source and source[name].find("config") > -1:
+					value = "-- not there, renamed? --"
+				via = ""
+				if name in source: via = "   <- from "+source[name]
+				out.append("   {:<14} {:<28} {}{}".format("/".join(names[name]), value, name, via))
+
+			byPrefix = {}		## several expressions can share one prefix, list the live variables only once
+			for arg in sorted(expr):
+				lit, isPrefix = self.literalOrPrefix(arg)
+				if lit == "" or len(lit) < 3:
+					out.append("   {:<14} name built at runtime: {}".format("/".join(expr[arg]), arg))
+					continue
+				if lit not in byPrefix: byPrefix[lit] = {"what":[], "args":[]}
+				byPrefix[lit]["args"].append(arg)
+				for w in expr[arg]:
+					if w not in byPrefix[lit]["what"]: byPrefix[lit]["what"].append(w)
+
+			for start in sorted(byPrefix):
+				hits = []
+				for nm in liveNames:
+					if nm.find(start) == 0: hits.append(nm)
+				out.append("   {:<14} {} live variable(s) start with '{}'   <- built at runtime: {}".format(
+					"/".join(byPrefix[start]["what"]), len(hits), start, ",  ".join(byPrefix[start]["args"])))
+				for nm in sorted(hits):
+					try:	out.append("   {:<14} {:<28} {}".format("", "= "+str(indigo.variables[nm].value)[:24], nm))
+					except:	pass
+
+			if dynamic > 0:
+				out.append("   {:<14} {} more call(s) use a name taken from another object at runtime (eg var.name in a loop) - not a variable of this plugin".format("", dynamic))
+
+		except  Exception as e:
+			out.append("variables       : could not be read: {}".format(e))
+		return out
+
+####-----------------  is the argument a literal name, or a literal used as a prefix ---------
+	def literalOrPrefix(self, arg):
+		try:
+			quote = arg[0]
+			if quote not in ['"',"'"]:   return "", False
+			if quote not in arg[1:]:     return "", False
+			lit  = arg[1:].split(quote)[0]
+			rest = arg[1:].split(quote,1)[1].strip()
+			if len(lit) == 0:            return "", False
+			return lit, rest.startswith("+")
+		except:
+			return "", False
+
+####-----------------  follow  self.xxx = "name"  or  self.xxx = prefs.get("key", DEFAULTS["key"]) ---------
+	def resolveVarName(self, expr, src):
+		found = []
+		try:
+			if len(expr) < 3 or expr.find("(") > -1 or expr.find("[") > -1: return found
+			for m in re.finditer(r'(?<![\w.])' + re.escape(expr) + r'\s*=\s*([^\n]+)', src):
+				rhs = m.group(1).strip()
+				lit, isPrefix = self.literalOrPrefix(rhs)
+				if lit != "":
+					if (lit, isPrefix, "") not in found: found.append((lit, isPrefix, ""))
+					continue
+				## the name is a config setting:  ....get("key" ....   find its default in the code
+				if rhs.find(".get(") > -1:
+					key = ""
+					after = rhs.split(".get(",1)[1].strip()
+					key, dummy = self.literalOrPrefix(after)
+					if key == "": continue
+					for m2 in re.finditer(r'["\']' + re.escape(key) + r'["\']\s*:\s*(["\'][^"\']*["\'])', src):
+						dflt, dummy2 = self.literalOrPrefix(m2.group(1).strip())
+						if dflt != "" and (dflt, False, 'config "'+key+'"') not in found:
+							found.append((dflt, False, 'config "'+key+'"'))
+		except:
+			pass
+		return found
+
+####-----------------  ave / min / max of a list of samples, as strings ---------
+	def aveMinMax(self, values, decimals=2):
+		try:
+			if len(values) == 0: return ["","",""]
+			fmt = "{:."+str(int(decimals))+"f}"
+			return [fmt.format(float(sum(values))/len(values)), fmt.format(min(values)), fmt.format(max(values))]
+		except:
+			return ["","",""]
+
+####-----------------  one value out of a plugins Info.plist ---------
+	def getPlistValue(self, pName, key):
+		try:
+			f = open(self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Info.plist","r", encoding="utf-8")
+			xmlLines = f.read()
+			f.close()
+			temp = xmlLines.split(key+"</key>")
+			if len(temp) > 1: return temp[1].split("</string>")[0].split("<string>")[1]
+		except:
+			pass
+		return "?"
+
+####-----------------  devices owned by a plugin, with their props ---------
+	def pluginDevicesInfo(self, plugID):
+		out = [" "]
+		try:
+			devs = []
+			for dev in indigo.devices:
+				if getattr(dev,"pluginId","") != plugID: continue
+				devs.append(dev)
+			nOn = 0
+			for dev in devs:
+				if dev.enabled: nOn += 1
+			out.append("devices         : {}   ({} enabled, {} disabled)".format(len(devs), nOn, len(devs)-nOn))
+			devFormat = "   {:<12} {:<26} {:<9}{}"
+			if len(devs) > 0: out.append(devFormat.format("id","type","enabled","name"))
+			for dev in sorted(devs, key=lambda d: d.name.lower()):
+				out.append(devFormat.format(dev.id, str(dev.deviceTypeId), ["disabled","enabled"][int(dev.enabled)], dev.name))
+				try:
+					props = dict(dev.pluginProps)
+					if len(props) > 0:
+						out.append("        states:{:<4} props: {}".format(len(dev.states), str(props)))
+				except:
+					pass
+		except	Exception as e:
+			out.append("devices         : could not be read: {}".format(e))
+		return out
+
+####-----------------  event triggers that belong to a plugin ---------
+	def pluginTriggersInfo(self, plugID):
+		out = [" "]
+		try:
+			trigs = []
+			for trig in indigo.triggers:
+				if getattr(trig,"pluginId","") != plugID: continue
+				trigs.append(trig)
+			out.append("triggers        : {}".format(len(trigs)))
+			trigFormat = "   {:<12} {:<26} {:<9}{}"
+			if len(trigs) > 0: out.append(trigFormat.format("id","type","enabled","name"))
+			for trig in sorted(trigs, key=lambda t: t.name.lower()):
+				out.append(trigFormat.format(trig.id, str(trig.pluginTypeId), ["disabled","enabled"][int(trig.enabled)], trig.name))
+		except	Exception as e:
+			out.append("triggers        : could not be read: {}".format(e))
+		return out
+
+####-----------------  actions a plugin offers, read from its Actions.xml ---------
+	def pluginActionsInfo(self, pName):
+		out = [" "]
+		try:
+			xmlLines = ""
+			for fName in ["Actions.xml","actions.xml"]:
+				path = self.indigoPath+"Plugins/"+pName+".indigoPlugin/Contents/Server Plugin/"+fName
+				if os.path.isfile(path):
+					f = open(path,"r", encoding="utf-8")
+					xmlLines = f.read()
+					f.close()
+					break
+			if xmlLines == "":
+				out.append("actions         : no Actions.xml found")
+				return out
+			actions = []
+			for block in xmlLines.split("<Action ")[1:]:
+				aId = ""
+				aNm = ""
+				if 'id="'   in block: aId = block.split('id="')[1].split('"')[0]
+				if "<Name>"  in block: aNm = " ".join(block.split("<Name>")[1].split("</Name>")[0].split())
+				actions.append((aId, aNm))
+			out.append("actions         : {}".format(len(actions)))
+			if len(actions) > 0: out.append("   {:<40} {}".format("id","name"))
+			for aId, aNm in sorted(actions, key=lambda a: a[0].lower()):
+				out.append("   {:<40} {}".format(aId, aNm))
+		except	Exception as e:
+			out.append("actions         : could not be read: {}".format(e))
+		return out
 
 ####-----------------  print device / variable states .. ---------
 	def printBatterylevels(self):
@@ -1142,6 +1638,12 @@ class Plugin(indigo.PluginBase):
 				if plID not in self.PLUGINSusedForCPUlimts: continue
 				retList.append((plID,pName) )
 			retList = sorted( retList, key=lambda x:(x[1]) )
+		if filter =="all":
+			for plID in  plugList:
+				plug = plugList[plID]
+				if plug["pType"] !="plugin": continue
+				retList.append((plID, plug["plugName"]) )
+			retList = sorted( retList, key=lambda x:(x[1].lower()) )
 		return retList
 
 
@@ -1214,6 +1716,54 @@ class Plugin(indigo.PluginBase):
 			self.exceptionHandler(40,e)
 		return ret
 
+	####-----------------  elapsed run time in seconds for each pid; ps etime format is [[dd-]hh:]mm:ss 
+	def getElapsedTimes(self):
+		etimeList ={}
+		try:
+			ret, err = self.readPopen("/bin/ps -eo pid=,etime=")
+			for line in ret.strip("\n").split("\n"):
+				items = line.split()
+				if len(items) != 2: continue
+				try:	pid = str(int(items[0]))
+				except:	continue
+				elapsed = items[1]
+				days    = 0
+				if elapsed.find("-") > -1:   # more than 1 day of run time:  dd-hh:mm:ss
+					days, elapsed = elapsed.split("-",1)
+					days = int(days)
+				try:	etimeList[pid] = days*86400 + self.calcCPU(elapsed)
+				except:	continue
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+		return etimeList
+
+	####-----------------  seconds as hh:mm:ss, hours are not wrapped at 24 
+	def secsToHMS(self, secs):
+		try:
+			secs = int(float(secs))
+			return "{:d}:{:02d}:{:02d}".format(secs//3600, (secs%3600)//60, secs%60)
+		except:
+			return ""
+
+	####-----------------  total run time of the process as hh:mm:ss 
+	def runTime(self, pID, etimeList):
+		if pID not in etimeList:  return ""
+		return self.secsToHMS(etimeList[pID])
+
+	####-----------------  cpu time used as hh:mm:ss;  ps prints it as mm:ss.ff with unlimited minutes 
+	def cpuTime(self, cpu):
+		try:	return self.secsToHMS(self.calcCPU(cpu))
+		except:	return ""
+
+	####-----------------  average cpu seconds used per 100 seconds of run time, same unit as the CPU_usage_.. variables
+	def aveCPU(self, cpu, pID, etimeList):
+		try:
+			if pID not in etimeList:  return ""
+			if etimeList[pID] < 1:    return ""
+			return "{:.2f}".format(self.calcCPU(cpu) / etimeList[pID] * 100.)
+		except:
+			return ""
+
 	####-----------------  
 	def addremovePlugin(self,plugID,plugList):
 			if self.PLUGINSallCalcCPU:
@@ -1238,8 +1788,9 @@ class Plugin(indigo.PluginBase):
 		if not self.PLUGINSallCalcCPU: return 
 		if time.time() - self.lastPluginCpuCheck < 100: return 
 		try:
-			psef     = self.getPSEF()
-			plugList = self.getActivePlugins(psef)
+			psef      = self.getPSEF()
+			plugList  = self.getActivePlugins(psef)
+			etimeList = self.getElapsedTimes()
 			self.addremovePlugin("IndigoServer",plugList)
 			self.addremovePlugin("IndigoClient",plugList)
 			self.addremovePlugin("IndigoWebServer",plugList)
@@ -1249,6 +1800,7 @@ class Plugin(indigo.PluginBase):
 
 
 			plugListALL = copy.copy(plugList)
+			goneList    = []
 			for plugID in self.PLUGINSusedForCPUlimts:
 				if plugID in plugList: 
 					if "plugData" in self.PLUGINSusedForCPUlimts[plugID]: 
@@ -1256,11 +1808,25 @@ class Plugin(indigo.PluginBase):
 							self.PLUGINSusedForCPUlimts[plugID]["plugData"] = plugList[plugID]
 				else:
 					self.PLUGINSusedForCPUlimts[plugID]["lastCPU"] = 0
+					## a plugin that is not running any more and has no cpu event configured was only
+					## added automatically - forget it, otherwise its CPU_usage_ variable is rewritten
+					## with 0.00 for ever, long after the plugin is gone
+					if self.PLUGINSusedForCPUlimts[plugID].get("evID",0) in [0,"0",""]:
+						goneList.append(plugID)
+						continue
 					if "plugData" not in self.PLUGINSusedForCPUlimts[plugID]: continue
 					plugListALL[plugID]                            = self.PLUGINSusedForCPUlimts[plugID]["plugData"]
 					plugListALL[plugID]["cpu"]                     = "0:0.0"
 
+			for plugID in goneList:
+				try:
+					del self.PLUGINSusedForCPUlimts[plugID]
+					self.ML.myLog( text="cpu tracking: '{}' is not running any more, it is no longer tracked. its CPU_usage_ variable is left as it is, delete it in indigo if you do not want it".format(plugID))
+				except:
+					pass
+
 			totalDelta = 0
+			totalAve   = 0
 			for plugID in  plugListALL:
 				plug = plugListALL[plugID]
 				###indigo.server.log(" doing "+ str(plug))
@@ -1302,6 +1868,21 @@ class Plugin(indigo.PluginBase):
 
 
 
+				## value for the variable: average cpu since the process started, in cpu seconds per 100
+				## seconds of run time - the same number as ave_cpu in "print plugin names ..".
+				## the 100-second deltaCPU above stays as it is, it is what fires the cpu threshold event.
+				aveCPU = 0.
+				try:
+					elapsed = etimeList.get(plug["pid"], 0)
+					if elapsed > 0:
+						cpuAll = self.calcCPU(plug["cpu"])
+						for subPLid in plug["subprocessesPid"]:
+							cpuAll += self.calcCPU(plug["subprocessesPid"][subPLid]["cpu"])
+						aveCPU = cpuAll / elapsed * 100.
+				except:
+					pass
+				totalAve += aveCPU
+
 				# store result in variable CPU_usage_short_plugID
 				plugID = plugID.replace(" ","-")
 				ss = plugID.split(".")
@@ -1314,9 +1895,9 @@ class Plugin(indigo.PluginBase):
 					plugidShort = plugID
 				try:     
 					var = indigo.variables["CPU_usage_"+plugidShort]
-					indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.2f"%(deltaCPU+deltaCPUsub))
+					indigo.variable.updateValue("CPU_usage_"+plugidShort,"%.2f"%aveCPU)
 				except:  
-					indigo.variable.create("CPU_usage_"+plugidShort,"%.2f"%(deltaCPU+deltaCPUsub),"")
+					indigo.variable.create("CPU_usage_"+plugidShort,"%.2f"%aveCPU,"")
 
 				totalDelta +=deltaCPUsub
 					
@@ -1325,9 +1906,9 @@ class Plugin(indigo.PluginBase):
 			if self.PLUGINSallCalcCPU:
 				try:     
 					var = indigo.variables["CPU_usage_AllIndigoAndPlugins"]
-					indigo.variable.updateValue("CPU_usage_AllIndigoAndPlugins","%.2f"%totalDelta)
+					indigo.variable.updateValue("CPU_usage_AllIndigoAndPlugins","%.2f"%totalAve)
 				except:  
-					indigo.variable.create("CPU_usage_AllIndigoAndPlugins","%.2f"%totalDelta,"")
+					indigo.variable.create("CPU_usage_AllIndigoAndPlugins","%.2f"%totalAve,"")
 			self.lastPluginCpuCheck = time.time()
 		except  Exception as e:
 			self.exceptionHandler(40,e)
@@ -1467,7 +2048,7 @@ class Plugin(indigo.PluginBase):
 
 			if  valuesDict["devOrVar"] =="dev":
 				try:
-					id =    indigo.variables[int(valuesDict["device"])]
+					id =    indigo.devices[int(valuesDict["device"])]
 				except:
 					try:
 						id =    indigo.devices[valuesDict["device"]].id
@@ -1519,7 +2100,7 @@ class Plugin(indigo.PluginBase):
 					return
 					
 			if self.liteOrPsql =="sqlite": 
-				cmd=    "/usr/bin/sqlite3  -separator \" \" '"+self.indigoPath+ "logs/indigo_history.sqlite' \"SELECT id,strftime('%Y%m%D%H%M%S',ts,'localtime') FROM "+table+orderby+";\"\n"
+				cmd=    "/usr/bin/sqlite3  -separator \" \" '"+self.indigoPath+ "logs/indigo_history.sqlite' \"SELECT id,strftime('%Y%m%d%H%M%S',ts,'localtime') FROM "+table+orderby+";\"\n"
 			else:    
 				cmd= self.liteOrPsqlString+ " -t -A -F ' ' -c \"SELECT id, to_char(ts,'YYYYmmddHH24MIss') FROM "+table+orderby+";\"\n"
 				if self.postgresUserId != "" and self.postgresUserId != "postgres": cmd = cmd.replace(" postgres "," "+self.postgresUserId+" ")
@@ -1741,7 +2322,7 @@ class Plugin(indigo.PluginBase):
 				gg.close()
 			except:
 				pass    
-			self.ML.myLog( text= "Test run: Number of devices:"+ str(nDEVS)+"; devices where records should be deleted: " +str(ndevsWdelete)+"; TOTAL  # of records (to be) deleted: " +str(nAllDelete)+ " out of " + str(nAllIn) +" records  ===============\n check out:  "+self.userIndigoPluginDir+"squeezeSQL", mType="================")
+			self.ML.myLog( text= "Test run: Number of devices:"+ str(nDEVS)+"; devices where records should be deleted: " +str(ndevsWdelete)+"; TOTAL  # of records (to be) deleted: " +str(nAllDelete)+ " out of " + str(nAllIn) +" records  ===============\n check out:  "+self.userIndigoPluginDir+"squeezeSQLall", mType="================")
 		self.executeDatabaseSqueezeCommand = ""
 		return    
 
@@ -2397,6 +2978,9 @@ class Plugin(indigo.PluginBase):
 				if self.taskList.find("printBatterylevels") > -1:
 					self.printBatterylevels()
 
+				if len(self.pluginDetailQueue) > 0:
+					self.printPluginDetail()
+
 				
 				if self.printNumberOfRecords ==1:
 					self.printnOfRecords()
@@ -2475,7 +3059,7 @@ class Plugin(indigo.PluginBase):
 					ret, err = self.readPopen("ps -ef | grep 'Plugins/utilities.indigoPlugin/Contents/Server Plugin/mkbackup.py' | grep -v grep ")
 					if len(ret)>20: 
 						if loopCounter %50 ==0:
-							self.ML.myLog( text="FIX of SQLite still running, check ~/indigo/Utilities/backup.log/  for detailed info")
+							self.ML.myLog( text="FIX of SQLite still running, check "+self.userIndigoPluginDir+"backup.log  for detailed info")
 						self.fixSQLStarted =2
 						continue
 					if self.fixSQLStarted ==1: #  request to start job 
@@ -2484,7 +3068,7 @@ class Plugin(indigo.PluginBase):
 							self.ML.myLog( text="FIX SQL not started, please shutdown sql logger first")
 							continue                    
 						self.executeSQL([],0,0,"fix")
-						self.ML.myLog( text="FIX SQL job submitted, check ~/indigo/Utilities/backup.log/  for detailed info, this might take a long time (~ 1 hour for 8GByte on Mac-Mini 2014)")
+						self.ML.myLog( text="FIX SQL job submitted, check "+self.userIndigoPluginDir+"backup.log  for detailed info, this might take a long time (~ 1 hour for 8GByte on Mac-Mini 2014)")
 						self.fixSQLStarted =2
 						continue
 
@@ -2509,6 +3093,8 @@ class Plugin(indigo.PluginBase):
 
 
 			self.stopConcurrentCounter = 1
+		except self.StopThread:      ## indigo raises this inside self.sleep() when the plugin is stopped or reloaded
+			pass
 		except  Exception as e:
 			self.exceptionHandler(40,e)
 		return
@@ -2630,17 +3216,18 @@ class Plugin(indigo.PluginBase):
 	def readPopen(self, cmd):
 		try:
 			ret, err = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-			return ret.decode('utf_8'), err.decode('utf_8')
+			return ret.decode('utf_8', 'replace'), err.decode('utf_8', 'replace')
 		except Exception as e:
 			self.exceptionHandler(40,e)
+			return "", str(e)
 
 ####-----------------  exception logging ---------
 	def exceptionHandler(self, level, exception_error_message):
 
 		try:
-			try: 
-				if "{}".format(exception_error_message).find("None") >-1: return exception_error_message
-			except: 
+			try:   ## a stop / reload of the plugin is not an error
+				if isinstance(exception_error_message, self.StopThread): return ""
+			except:
 				pass
 
 			filename, line_number, method, statement = traceback.extract_tb(sys.exc_info()[2])[-1]

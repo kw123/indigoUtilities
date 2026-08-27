@@ -50,7 +50,7 @@
 			</Field>
 
 			<Field  id="menu-3" type="button" >
-				<Label>zWave ~/documents/indigoUtilities/zWave.dot zwave.svg (Graphviz)</Label>
+				<Label>zWave ~/indigo/utilities/zWave.dot zWave.svg (Graphviz)</Label>
 				<Title>PRINT</Title>
 				<CallbackMethod>inpPrintdevzWave</CallbackMethod>
 			</Field>
@@ -146,9 +146,19 @@
 					</List>
 			</Field>
 			<Field  id="menu-14" type="button" >
-				<Label>print beteryLevels of devices to logfle</Label>
+				<Label>print Batterylevels of devices to logfile</Label>
 				<Title>PRINT</Title>
 				<CallbackMethod>printDeviceBatterylevels</CallbackMethod>
+			</Field>
+
+			<Field  id="pluginForDetail" type="menu" >
+				<Label>detailed info for ONE plugin: cpu ave/min/max, memory, devices, triggers, actions, props. Select:</Label>
+				<List class="self" filter="all" method="filterPlugin"  dynamicReload="true"/>
+			</Field>
+			<Field  id="menu-15" type="button" >
+				<Label>... takes 2 minutes, cpu and memory are sampled before the report is printed</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>printPluginDetailStart</CallbackMethod>
 			</Field>
 
 	   </ConfigUI>
@@ -365,7 +375,7 @@
 					type="textfield"
 					defaultValue=""
 					tooltip="">
-					<Label>print to file ( in ~indigo/indigoUtilities/ empty=Indigo Log):</Label>
+					<Label>print to file ( in ~/indigo/utilities/ empty=Indigo Log):</Label>
 				</Field>
 		
 				<Field
@@ -412,11 +422,11 @@
 		<CallbackMethod>executeBACKUP</CallbackMethod>
 	</MenuItem>
 	<MenuItem id="SQLpostgresBackup">
-		<Name>Create dumpfile.zip of the postgres db  in indigoUtilities directory</Name>
+		<Name>Create dumpfile.zip of the postgres db in ~/indigo/utilities/</Name>
 		<CallbackMethod>executeBACKUPpostgres</CallbackMethod>
 	</MenuItem>
 	<MenuItem id="IndigoBackup">
-		<Name>Create a backup of the indigo config files and config database in indigoUtilities directory</Name>
+		<Name>Create a backup of the indigo config files and config database in ~/indigo/utilities/</Name>
 		<CallbackMethod>executeBACKUPindigo</CallbackMethod>
 	</MenuItem>
 	
@@ -447,7 +457,7 @@
 					tooltip="">
 					<Label> select execution mode:</Label>
 					<List>
-						<Option value="test" >test only, create proposed SQL statements to file squeezeSQL in documents indigoutilities directory </Option>
+						<Option value="test" >test only, create proposed SQL statements to file squeezeSQLall in ~/indigo/utilities/ </Option>
 						<Option value="exec" >execute deletions </Option>
 						<Option value="execquiet" >execute deletions without logging details </Option>
 						<Option value="stop" >stop current delete job</Option>

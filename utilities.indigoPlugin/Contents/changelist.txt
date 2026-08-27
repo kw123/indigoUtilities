@@ -1,3 +1,99 @@
+Added features / changes in v2022.22.48 @ 2026-08-26
+===================================================
+new:
+1.  "print plugin names, IDs, mem, cpu, .." now also prints "ave_cpu" = average cpu used since the
+    process started, in cpu seconds per 100 seconds of run time - the same unit as the CPU_usage_..
+    variables and the config dialog, 100 = one full cpu core. printed for plugins and for their sub
+    processes. run time comes from "ps -eo pid=,etime=" (macOS ps has no "etimes" keyword).
+2.  same print: added "run-time" = total run time of the process as hh:mm:ss (hours not wrapped at
+    24), so cpu-total, run-time and ave_cpu = cpu-total/run-time can be read side by side.
+3.  same print: cpu-total is now printed as hh:mm:ss too. ps prints it as mm:ss.ff with unlimited
+    minutes (3 hours of cpu = "180:00.00", never "3:00:00"), which did not match the hh:mm:ss of
+    the run-time column. less than 1 second of cpu now shows as 0:00:00.
+4.  same print: after the table the plugins are listed once more, sorted by cpu usage with the
+    biggest user first: ave_cpu, ave_cpu including the plugins own sub processes (only shown when
+    there are any), and the plugin name. plugins without run time data sort to the end.
+5.  same print: 2 line header, second line gives the units of each column (hh:mm:ss, cpu/100sec, MB..)
+    and it is printed again at the END of the list. header and data lines now use ONE shared format
+    string, so the columns can no longer drift apart. Virtual and version columns widened, they
+    overflowed and pushed the whole line to the right for eg 1,919,280 MB or version 2026.56.445.
+    sub process and openFile lines line up with the pluginName column.
+6.  same print: sub process lines showed the memory of their PARENT plugin, divided by 1024 a
+    second time. now the sub process own memory, same units as the plugin lines.
+    (units are MB, the header said KB)
+7.  new in "print stuff": select ONE plugin and print detailed info about it. cpu is sampled every
+    2 secs for 2 minutes and reported as ave/min/max in % of one core (ps %CPU covers ~the last 2
+    secs, so short peaks are visible, not averaged away), same for real and virtual memory. one line
+    per process: the plugin itself, each of its sub processes sorted by cpu, and a TOTAL line, so a
+    busy plugin can be traced to the helper doing the work. no cpu-min column: with a 2 second sample
+    an idle moment is always found, so it was 0.00 for everything.
+    also DISK bytes read/written over the same window, total and per second, from proc_pid_rusage -
+    exact and without a password, works for processes of the same user, which plugins are.
+    and NETWORK bytes in and out separately, total and per second, from nettop - no password either, but nettop only
+    lists processes that had traffic while it samples and it costs ~5 secs per call, so it is read
+    once before and once after the window. permanent connections are measured well, a short request
+    in between can be missed.
+    and the VARIABLES the plugin creates/updates: indigo does not store which plugin owns a variable
+    (a variable record has no owner field, devices and triggers do), so the plugins own python files
+    are read and searched for indigo.variable.create/updateValue/delete. literal names are printed
+    with their current value, names built at runtime are printed as the expression plus every live
+    variable starting with that prefix. names kept in a plugin variable (self.var_name) are followed
+    to where they are set, including config settings: eg VoiceReceiver does
+    self.var_name = self.pluginPrefs.get("var_name", kDefaultPluginPrefs["var_name"]) and the report
+    now prints the real name "voice_command_text" with its value instead of "self.var_name".
+    calls that take the name from another object in a loop (indigo.variable.updateValue(var.name,..))
+    are counted in one line, they write to somebody elses variables and are not variables of the
+    plugin.
+    devices/triggers/actions lists have a header now (id / type / enabled / name) and nothing is
+    truncated any more - names are last on the line. plus
+    version/api/pid/run time/cpu total, ALL its devices with their complete pluginProps, its triggers
+    and the actions it offers (read from the plugins own Actions.xml). the sampling runs in the
+    plugins thread, the report is printed when it is done. several plugins can be selected while one
+    is still being sampled, the requests are queued and run one after the other (they do NOT use the
+    shared taskList, so they can not clobber or be clobbered by the other print jobs).
+8.  added README.md (menu items, actions, events, config, where the plugin puts its files),
+    same as the other plugins.
+9.  menu / action labels pointed at the old "~/documents/indigoUtilities/" folder, the plugin has
+    been writing to ~/indigo/utilities/ for a long time. all 9 labels corrected, and the config
+    label for the plugin logfile was missing the "Plugins/" part of the path. the "test only" label
+    for delete-duplicate-records now names the file that is really written (squeezeSQLall), same
+    for the message printed at the end of a test run. and the battery menu label said
+    "print beteryLevels of devices to logfle" -> "print Batterylevels of devices to logfile",
+    same wording as the action of the same name.
+
+bug fixes:
+10. cpu tracking kept plugins that are not installed/running any more alive for ever: they were put
+    back into the list every cycle with cpu "0:0.0" and their CPU_usage_<name> variable was rewritten
+    with 0.00, so old plugin names never went away. now an entry that is no longer running AND has no
+    cpu-threshold event configured is dropped (with a note in the log), entries with a real event are
+    kept. the leftover indigo variable is NOT deleted automatically, delete it yourself if not wanted.
+11. the CPU_usage_<plugin> variables mostly showed 0.00. the formula was not wrong (it already is
+    cpu-seconds x 100 / seconds), the WINDOW was: ps reports cpu time with a resolution of 0.01 sec,
+    so within one 100 second check the smallest value that can show up at all is 0.01, and a plugin
+    that sleeps through the window really is 0. the variables now hold the average since the process
+    started - the same number as ave_cpu in "print plugin names ..", which has no such floor.
+    the cpu threshold EVENT still uses the rolling 100 second rate, it has to react to a plugin
+    going busy now.
+12. prune database deleted nothing for sqlite users: the cut off query used strftime('%Y%m%D..'),
+    capital %D is not a valid sqlite format char, so strftime returned NULL for every record and
+    the delete ended up as "WHERE id < 0". now %d.
+13. prune database for a DEVICE looked the device id up in indigo.variables -> "device xx does not
+    exist", the action never ran. now indigo.devices.
+14. readPopen returned None when the subprocess call failed, so every caller crashed on
+    "ret, err = self.readPopen(..)". now returns ("", errortext), same as mkbackup.py.
+15. removed the "if error text contains None -> return" filter in exceptionHandler (plugin.py and
+    mkbackup.py): it hid every real NoneType error, including the readPopen one above.
+    what that filter DID cover is the StopThread indigo raises inside self.sleep() when a plugin is
+    stopped or reloaded - that is now recognised by its type instead of by the word "None" in the
+    text, so a reload no longer prints "Error 'None' / sleep @line 509: raise self.StopThread",
+    and the main loop ends on "except self.StopThread" like a plugin should.
+16. readPopen decodes with errors="replace", ps/lsof output with non utf-8 bytes no longer throws.
+17. yourPassword now defaults to "", print powermetrics crashed on len(None) before the config
+    was saved for the first time.
+18. mkbackup.py wrote steps/retcodes to ~/indigo/Utilities/ while the plugin reads ~/indigo/utilities/;
+    same folder on a normal MAC, different ones on a case sensitive volume. both lowercase now.
+
+
 Added features / changes in v2022.22.47 @ 2026-07-07
 ===================================================
 bug fix audit (plugin.py, mkbackup.py, myLogPgms.py):
