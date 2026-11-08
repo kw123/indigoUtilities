@@ -1,0 +1,998 @@
+<?xml version="1.0"?>
+<Devices>
+	<Device type="custom" id="macOsHealth">
+		<Name>macOS health</Name>
+		<UiDisplayStateId>healthStatus</UiDisplayStateId>
+
+		<ConfigUI>
+			<Field id="infoLabel1" type="label" fontColor="green">
+				<Label>Measures the health of the Mac that runs this Indigo server: cpu, memory, disk,
+  network and the busiest app.
+cpu: % of the capacity of all cores. 
+Average and max (peak of 15 sec readings) are for the measure interval
+  (5 minutes; the average is made of 2 readings 45 seconds apart).
+top app: 100% = one full core, as in "top". All processes with the same name count as one app.
+The 24h values are kept in memory and start new after a plugin restart.</Label>
+			</Field>
+
+			<Field id="scheduleLabel" type="label" fontSize="small" fontColor="darkgrey">
+				<Label>Measured every 5 minutes. Each measurement is the average of 2 readings 45 seconds apart 
+    (cpu, network, busiest apps). 
+  The first one is shown ~90 seconds after the device starts.</Label>
+			</Field>
+
+			<Field id="selfReport" type="checkbox" alwaysUseInDialogHeightCalc="true" defaultValue="false">
+				<Label>Self reporting: count the cpu used by this plugin itself:</Label>
+			</Field>
+			<Field id="selfReportLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+				<Label>Off (default): what the utilities plugin process and the commands it starts to measure (ps, vm_stat, netstat, ..) 
+use is taken out of the cpu values (cpuAvg, cpuUser, cpuSystem, cpuMax) and the plugin is not listed as busiest app. 
+On: they are counted like any other program.</Label>
+			</Field>
+
+			<Field id="printStatesButton" type="button" alwaysUseInDialogHeightCalc="true" tooltip="writes all states of this device, with units and meaning, and the limits to the Indigo log">
+				<Label>Print the states and limits of this device to the log:</Label>
+				<Title>Print states</Title>
+				<CallbackMethod>macHealthPrintStates</CallbackMethod>
+			</Field>
+			<Field id="printStatesLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+				<Label>shows the values of the saved device, save changes first (OK) and reopen to see changed limits</Label>
+			</Field>
+
+			<Field id="netInterfaces" type="textfield" defaultValue="">
+				<Label>Network interfaces to add up:</Label>
+			</Field>
+			<Field id="netInterfacesLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+				<Label>comma separated, e.g. en0,en1. Leave empty for all ethernet / wifi interfaces (en0, en1, ..) 
+that are not part of a bridge. Local traffic (lo0) is never counted unless you list it.</Label>
+			</Field>
+			<Field id="bridgeInterfaces" type="textfield" defaultValue="bridge0">
+				<Label>Bridge (thunderbolt link) to count separately:</Label>
+			</Field>
+			<Field id="bridgeInterfacesLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+				<Label>comma separated, default bridge0 = thunderbolt link between two Macs (screen sharing, file copy). 
+ Its traffic goes into the bridgeInKBps / bridgeOutKBps states and not into the network states above. 
+ Empty = off. Shown only if the interface exists.</Label>
+			</Field>
+
+			<Field id="statesSep" type="separator"/>
+			<Field id="statesLabel" type="label" fontColor="green">
+				<Label>== What the states of this device mean ==</Label>
+			</Field>
+			<Field id="statesLabelCpu0" type="label" fontColor="orange">
+				<Label>
+CPU</Label>
+			</Field>
+			<Field id="statesLabelCpu" type="label" fontSize="small">
+				<Label>All cpu values are in % of the capacity of ALL cores together: 
+  100% = every core busy all the time, 50% = half of the total capacity.
+
+cpuAvg: how busy the cpu was on average during the 2 readings of the measurement (45 seconds each). 
+  Idle time is not counted. 
+  cpuAvg = cpuUser + cpuSystem.
+
+cpuUser: the part of cpuAvg used by programs (apps, Indigo and its plugins, background tasks).
+
+cpuSystem: the part of cpuAvg used by macOS itself for the programs: 
+  disk and network traffic, drivers, memory handling. 
+  A high cpuSystem with a low cpuUser often points to heavy disk, network or memory swapping.
+
+cpuMax: the highest cpu reading in the interval. 
+ The cpu is also read every 15 seconds in between and the highest of these short readings is kept, 
+ so a spike of 30 seconds that the average hides is still visible. Always cpuMax >= cpuAvg.
+ The cpu used by this plugin itself is left out of these values unless "Self reporting" above is ticked.
+
+cpuAvg24h / cpuMax24h: the average of all cpuAvg values, and the highest cpuMax, of the last 24 hours 
+  (kept in memory, they start new after a plugin restart).
+
+cpuCores: number of cores. load1 / load5 / load15: load average of the last 1, 5, 15 minutes 
+  = how many programs wanted to run at the same time. 
+  About the number of cores = fully used, much higher = programs have to wait.
+
+Example: cpuAvg 20%, cpuUser 15%, cpuSystem 5%, cpuMax 85%: quiet most of the time, 
+  one short burst that used 85% of the capacity.</Label>
+			</Field>
+			<Field id="statesLabelMem0" type="label" fontColor="orange">
+				<Label>
+MEMORY</Label>
+			</Field>
+			<Field id="statesLabelMem" type="label" fontSize="small">
+				<Label>memUsedPct / memUsedGB / memTotalGB: memory used as Activity Monitor counts it (apps + wired + compressed). 
+  File cache is NOT counted, it is released when needed.
+
+memAvg24h / memMax24h: average and highest memUsedPct of the last 24 hours.
+
+memPressure: how hard the system works to get free memory: normal, warning, critical. More telling than memUsedPct.
+
+swapUsedMB: memory pushed out to disk. Some swap is normal, a lot and growing means the Mac needs more memory.</Label>
+			</Field> 
+			<Field id="statesLabelDisk0" type="label" fontColor="orange">
+				<Label>
+DISK, NETWORK, APPS</Label>
+			</Field>
+			<Field id="statesLabelDisk" type="label" fontSize="small">
+				<Label>diskUsedPct / diskFreeGB: startup disk.
+
+netInKBps / netOutKBps: data received / sent, average KB/s over the measure interval 
+  (all ethernet + wifi, or the interfaces you list above).
+
+netInMax24h / netOutMax24h: highest interval average of the last 24 hours.
+
+bridgeInKBps / bridgeOutKBps / bridgeInMax24h / bridgeOutMax24h: 
+  the same for the thunderbolt bridge (bridge0) between two Macs, e.g. screen sharing. 
+  Counted separately, it does not count for the network states and limits above.
+
+topProcName / topProcCpu / topProcList: app with the highest cpu use in the interval, 
+  its cpu in % of ONE core (100 = one full core, can be above 100), 
+  and the top 3. Same name = one app.
+
+mountCount / tmSnapshotMounts / authdMemMB: mounted volumes, how many of them are Time Machine snapshot volumes, 
+  and the memory of the macOS service authd. macOS checks an authorization for EVERY mounted volume twice a minute 
+  and authd leaks a little memory each time, so hundreds of snapshot mounts make authd grow to many GB over weeks. 
+  Normal: a handful of mounts, 0 .. few snapshot mounts, authd in the tens of MB.
+
+uptimeHours: hours since the Mac was started.</Label>
+			</Field>
+			<Field id="statesLabelStatus0" type="label" fontColor="orange">
+				<Label>
+STATUS</Label>
+			</Field>
+			<Field id="statesLabelStatus" type="label" fontSize="small">
+				<Label>healthStatus: starting (waiting for the first measurement, ~90 sec) / ok / warning (a limit below is exceeded). 
+This is the state shown in the device list.
+
+warnings: which limits are exceeded, e.g. "cpu | mem". "none" if all is fine.
+
+lastMeasured: time of the last measurement. If it stops moving the plugin is not running.</Label>
+			</Field>
+
+			<Field id="limitsSep" type="separator"/>
+			<Field id="limitsEnabled" type="checkbox" defaultValue="false">
+				<Label>Print a warning to the log when a limit is exceeded:</Label>
+			</Field>
+			<Field id="limitsLabel" type="label" fontSize="small" fontColor="darkgrey">
+				<Label>Limits are only checked when the box above is ticked. Leave a field empty to not check that value.
+A limit is reported only when it is exceeded at two measurements in a row (a single short peak is ignored). 
+  The warning then repeats at every measurement while the value stays beyond the limit; 
+  a log line tells when it is back to normal.
+  The state "healthStatus" shows "warning" meanwhile, use it for triggers.</Label>
+			</Field>
+
+			<Field id="cpuLimit" type="textfield" defaultValue="90">
+				<Label>CPU average (cpuAvg, over the measure interval) is above [% of all cores]:</Label>
+			</Field>
+			<Field id="cpuMaxLimit" type="textfield" defaultValue="">
+				<Label>CPU max (cpuMax, highest short reading in the interval) is above [% of all cores]:</Label>
+			</Field>
+			<Field id="topAppLimit" type="textfield" defaultValue="">
+				<Label>busiest app uses more than [% of one core, 100 = 1 core]:</Label>
+			</Field>
+			<Field id="loadLimit" type="textfield" defaultValue="">
+				<Label>load average (5 min) is above [load]:</Label>
+			</Field>
+			<Field id="memLimit" type="textfield" defaultValue="90">
+				<Label>memory used is above [%]:</Label>
+			</Field>
+			<Field id="pressureLimit" type="menu" defaultValue="">
+				<Label>memory pressure reaches:</Label>
+				<List>
+					<Option value=""         >do not check</Option>
+					<Option value="warning"  >warning (or critical)</Option>
+					<Option value="critical" >critical</Option>
+				</List>
+			</Field>
+			<Field id="swapLimit" type="textfield" defaultValue="">
+				<Label>swap used is above [MB]:</Label>
+			</Field>
+			<Field id="diskLimit" type="textfield" defaultValue="90">
+				<Label>startup disk used is above [%]:</Label>
+			</Field>
+			<Field id="diskFreeLimit" type="textfield" defaultValue="">
+				<Label>startup disk free is below [GB]:</Label>
+			</Field>
+			<Field id="netInMbLimit" type="textfield" defaultValue="">
+				<Label>network in (average of the 2 readings) is above [Mb/s, megabit per second]:</Label>
+			</Field>
+			<Field id="netOutMbLimit" type="textfield" defaultValue="">
+				<Label>network out (average of the 2 readings) is above [Mb/s, megabit per second]:</Label>
+			</Field>
+			<Field id="tmSep" type="separator"/>
+			<Field id="tmLabel" type="label" fontSize="small" fontColor="darkgrey">
+				<Label>TIME MACHINE BACKUP VOLUMES
+While Time Machine makes a backup it can mount its old backups as volumes, one per backup, so hundreds
+  when there are many backups, and it may give them back only slowly. macOS checks an authorization for every
+  mounted volume twice a minute and its service authd leaks a little memory with each check, so authd can grow
+  over the weeks. Whether this happens, and how fast, depends on the macOS version and on how many backups exist.
+  Choose what the plugin checks:
+  - watch authd only: no warning for the number of volumes, only when authd gets too large (limit below).
+    That warning tells the command to unmount the backup volumes by hand (it shows each volume).
+  - warn above the volume limits: warn when more volumes than the two volume limits below are mounted.
+    Set the limits above the number that is normal on this Mac (see the states mountCount and tmSnapshotMounts).
+  The plugin itself never unmounts anything, that is only done by hand:
+    sudo bash "&lt;plugin folder&gt;/tmUnmount/tm_unmount_snapshots.sh"      (the warning shows the full path)</Label>
+			</Field>
+			<Field id="tmMode" type="menu" defaultValue="watch">
+				<Label>Time Machine backup volumes:</Label>
+				<List>
+					<Option value="watch">watch authd only, unmount by hand when it grows (recommended)</Option>
+					<Option value="limit">warn when more volumes than the limits below are mounted</Option>
+				</List>
+			</Field>
+			<Field id="mountsLimit" type="textfield" defaultValue="60">
+				<Label>mounted volumes (mountCount) is above  [only for: warn above the volume limits]:</Label>
+			</Field>
+			<Field id="tmMountsLimit" type="textfield" defaultValue="20">
+				<Label>Time Machine backup volumes mounted (tmSnapshotMounts) is above 
+  [only for: warn above the volume limits]:</Label>
+			</Field>
+			<Field id="authdLimit" type="textfield" defaultValue="500">
+				<Label>authd memory (authdMemMB) is above [MB]:</Label>
+			</Field>
+			<Field id="expertAdvice" type="checkbox" alwaysUseInDialogHeightCalc="true" defaultValue="true">
+				<Label>Expert advice on/off:
+  the first warning about authd or the backup volumes also tells how to fix it (the commands):</Label>
+			</Field>
+
+			<Field id="mcSep" type="separator"/>
+			<Field id="warnMulticastDenied" type="checkbox" alwaysUseInDialogHeightCalc="true" defaultValue="true">
+				<Label>Warn when an app is denied Local Network (multicast):</Label>
+			</Field>
+			<Field id="warnMulticastDeniedLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgray">
+				<Label>Each measurement does a LIVE multicast send from the Indigo process (state localNetworkMulticast =
+ok / blocked). If it is blocked (errno 65) Indigo cannot reach the LAN - multicast and TCP/UDP to local devices
+fail while the internet still works (e.g. a Hue bridge goes unreachable). The warning fires once when it flips to
+blocked (not every measurement). Fix: System Settings > Privacy &amp; Security > Local Network, enable Indigo, then
+reboot.
+It also reads the stored consent store (com.apple.networkextension.plist) for info only - states multicastDeniedCount
+/ multicastDeniedApps list apps with DenyMulticast=true - but that stored policy can lag the live state, so the
+warning uses the live test, not the policy.</Label>
+			</Field>
+		</ConfigUI>
+
+		<States>
+			<State id="healthStatus">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Health status</TriggerLabel>
+				<ControlPageLabel>Health status (starting / ok / warning)</ControlPageLabel>
+			</State>
+			<State id="warnings">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Warnings</TriggerLabel>
+				<ControlPageLabel>Warnings, which limits are exceeded</ControlPageLabel>
+			</State>
+			<State id="lastMeasured">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Last measured</TriggerLabel>
+				<ControlPageLabel>Time of last measurement</ControlPageLabel>
+			</State>
+
+			<State id="cpuAvg">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU average [%]</TriggerLabel>
+				<ControlPageLabel>CPU average over the measure interval [%]</ControlPageLabel>
+			</State>
+			<State id="cpuMax">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU max [%]</TriggerLabel>
+				<ControlPageLabel>CPU max (peak of 15 sec readings) in the measure interval [%]</ControlPageLabel>
+			</State>
+			<State id="cpuUser">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU user [%]</TriggerLabel>
+				<ControlPageLabel>CPU used by apps (user) [%]</ControlPageLabel>
+			</State>
+			<State id="cpuSystem">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU system [%]</TriggerLabel>
+				<ControlPageLabel>CPU used by the system (kernel) [%]</ControlPageLabel>
+			</State>
+			<State id="cpuAvg24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU average 24h [%]</TriggerLabel>
+				<ControlPageLabel>CPU average of the last 24 hours [%]</ControlPageLabel>
+			</State>
+			<State id="cpuMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU max 24h [%]</TriggerLabel>
+				<ControlPageLabel>CPU max of the last 24 hours [%]</ControlPageLabel>
+			</State>
+			<State id="cpuCores">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>CPU cores</TriggerLabel>
+				<ControlPageLabel>Number of cpu cores</ControlPageLabel>
+			</State>
+			<State id="load1">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Load average 1 min</TriggerLabel>
+				<ControlPageLabel>Load average, last 1 minute</ControlPageLabel>
+			</State>
+			<State id="load5">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Load average 5 min</TriggerLabel>
+				<ControlPageLabel>Load average, last 5 minutes</ControlPageLabel>
+			</State>
+			<State id="load15">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Load average 15 min</TriggerLabel>
+				<ControlPageLabel>Load average, last 15 minutes</ControlPageLabel>
+			</State>
+
+			<State id="memUsedPct">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Memory used [%]</TriggerLabel>
+				<ControlPageLabel>Memory used (apps + wired + compressed, as in activity monitor) [%]</ControlPageLabel>
+			</State>
+			<State id="memUsedGB">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Memory used [GB]</TriggerLabel>
+				<ControlPageLabel>Memory used [GB]</ControlPageLabel>
+			</State>
+			<State id="memTotalGB">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Memory installed [GB]</TriggerLabel>
+				<ControlPageLabel>Memory installed [GB]</ControlPageLabel>
+			</State>
+			<State id="memAvg24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Memory used average 24h [%]</TriggerLabel>
+				<ControlPageLabel>Memory used, average of the last 24 hours [%]</ControlPageLabel>
+			</State>
+			<State id="memMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Memory used max 24h [%]</TriggerLabel>
+				<ControlPageLabel>Memory used, max of the last 24 hours [%]</ControlPageLabel>
+			</State>
+			<State id="memPressure">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Memory pressure</TriggerLabel>
+				<ControlPageLabel>Memory pressure (normal / warning / critical)</ControlPageLabel>
+			</State>
+			<State id="swapUsedMB">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Swap used [MB]</TriggerLabel>
+				<ControlPageLabel>Swap used [MB]</ControlPageLabel>
+			</State>
+
+			<State id="diskUsedPct">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Startup disk used [%]</TriggerLabel>
+				<ControlPageLabel>Startup disk used [%]</ControlPageLabel>
+			</State>
+			<State id="diskFreeGB">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Startup disk free [GB]</TriggerLabel>
+				<ControlPageLabel>Startup disk free [GB]</ControlPageLabel>
+			</State>
+
+			<State id="netInKBps">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Network in [KB/s]</TriggerLabel>
+				<ControlPageLabel>Network received, average over the measure interval [KB/s]</ControlPageLabel>
+			</State>
+			<State id="netOutKBps">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Network out [KB/s]</TriggerLabel>
+				<ControlPageLabel>Network sent, average over the measure interval [KB/s]</ControlPageLabel>
+			</State>
+			<State id="netInMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Network in max 24h [KB/s]</TriggerLabel>
+				<ControlPageLabel>Network received, highest interval average of the last 24 hours [KB/s]</ControlPageLabel>
+			</State>
+			<State id="netOutMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Network out max 24h [KB/s]</TriggerLabel>
+				<ControlPageLabel>Network sent, highest interval average of the last 24 hours [KB/s]</ControlPageLabel>
+			</State>
+
+			<State id="bridgeInKBps">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Bridge in [KB/s]</TriggerLabel>
+				<ControlPageLabel>Thunderbolt bridge received, average over the measure interval [KB/s]</ControlPageLabel>
+			</State>
+
+			<State id="bridgeOutKBps">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Bridge out [KB/s]</TriggerLabel>
+				<ControlPageLabel>Thunderbolt bridge sent, average over the measure interval [KB/s]</ControlPageLabel>
+			</State>
+
+			<State id="bridgeInMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Bridge in max 24h [KB/s]</TriggerLabel>
+				<ControlPageLabel>Thunderbolt bridge received, highest interval average of the last 24 hours [KB/s]</ControlPageLabel>
+			</State>
+
+			<State id="bridgeOutMax24h">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Bridge out max 24h [KB/s]</TriggerLabel>
+				<ControlPageLabel>Thunderbolt bridge sent, highest interval average of the last 24 hours [KB/s]</ControlPageLabel>
+			</State>
+
+			<State id="topProcName">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Top app name</TriggerLabel>
+				<ControlPageLabel>App with the highest cpu use in the measure interval</ControlPageLabel>
+			</State>
+			<State id="topProcCpu">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Top app CPU [% of one core]</TriggerLabel>
+				<ControlPageLabel>CPU of the top app, 100 = one full core [%]</ControlPageLabel>
+			</State>
+			<State id="topProcList">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Top 3 apps</TriggerLabel>
+				<ControlPageLabel>The 3 apps with the highest cpu use, e.g. "Python 85%, Safari 12%, ..."</ControlPageLabel>
+			</State>
+
+			<State id="mountCount">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Mounted volumes</TriggerLabel>
+				<ControlPageLabel>Number of mounted volumes</ControlPageLabel>
+			</State>
+
+			<State id="tmSnapshotMounts">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Time Machine snapshot mounts</TriggerLabel>
+				<ControlPageLabel>Number of mounted Time Machine snapshot volumes</ControlPageLabel>
+			</State>
+
+			<State id="authdMemMB">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>authd memory [MB]</TriggerLabel>
+				<ControlPageLabel>Resident memory of the macOS service authd [MB]</ControlPageLabel>
+			</State>
+
+			<State id="uptimeHours">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Uptime [hours]</TriggerLabel>
+				<ControlPageLabel>Hours since the Mac was started</ControlPageLabel>
+			</State>
+
+			<State id="localNetworkMulticast">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Local Network multicast (live)</TriggerLabel>
+				<ControlPageLabel>Live test each measurement: can Indigo send multicast now - "ok" or "blocked (errno 65)"</ControlPageLabel>
+			</State>
+
+			<State id="multicastDeniedCount">
+				<ValueType>Number</ValueType>
+				<TriggerLabel>Apps denied Local Network (policy)</TriggerLabel>
+				<ControlPageLabel>Number of apps with DenyMulticast=true in the macOS consent store (stored policy, can lag the live state)</ControlPageLabel>
+			</State>
+
+			<State id="multicastDeniedApps">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Apps denied Local Network</TriggerLabel>
+				<ControlPageLabel>Bundle ids that macOS blocks from multicast / Local Network (DenyMulticast=true)</ControlPageLabel>
+			</State>
+		</States>
+	</Device>
+	<Device type="sensor" id="sumMeters">
+		<Name>sumMeters: add up power, current, energy of other devices</Name>
+		<UiDisplayStateId>sensorValue</UiDisplayStateId>
+		<ConfigUI>
+			<Field id="SupportsOnState" type="checkbox" defaultValue="false" hidden="true" />
+			<Field id="SupportsSensorValue" type="checkbox" defaultValue="true" hidden="true" />
+			<Field id="SupportsStatusRequest" type="checkbox" defaultValue="false" hidden="true" />
+			<Field id="AllowSensorValueChange" type="checkbox" defaultValue="false" hidden="true" />
+			<Field id="MSG" type="textfield" defaultValue="" readonly="yes">
+				<Label>message from plugin:</Label>
+			</Field>
+			<Field id="label0" type="label">
+				<Label>Set the number of sources, then pick for each slot a device, one of its states and its unit. Slots without a device are skipped. The sum is updated whenever one of the source states changes. Works with any indigo device; another sumMeters device can be a source too (sum of sums).</Label>
+			</Field>
+			<Field id="displaySelect" type="menu" defaultValue="powerSum">
+				<Label>Show in device list:</Label>
+				<List>
+					<Option value="powerSum">power sum</Option>
+					<Option value="currentSum">current sum</Option>
+					<Option value="energySum">energy sum</Option>
+				</List>
+			</Field>
+			<Field id="sep_power" type="separator"/>
+			<Field id="powerCount" type="menu" defaultValue="1">
+				<Label>number of power (W) sources:</Label>
+				<List>
+					<Option value="0">0</Option>
+					<Option value="1">1</Option>
+					<Option value="2">2</Option>
+					<Option value="3">3</Option>
+					<Option value="4">4</Option>
+					<Option value="5">5</Option>
+					<Option value="6">6</Option>
+					<Option value="7">7</Option>
+					<Option value="8">8</Option>
+				</List>
+			</Field>
+			<Field id="powerSumUnit" type="menu" defaultValue="W">
+				<Label>unit of the power sum and of power1..8:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="power_EnableMinMax" type="checkbox" defaultValue="true">
+				<Label>power sum: daily min / max / ave:</Label>
+				<Description>states powerSumMinToday .. powerSumAveYesterday</Description>
+			</Field>
+			<Field id="powerDev1" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>power 1 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState1" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>power 1 state:</Label>
+				<List class="self" filter="powerDev1" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit1" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>power 1 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev2" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>power 2 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState2" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>power 2 state:</Label>
+				<List class="self" filter="powerDev2" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit2" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>power 2 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev3" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>power 3 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState3" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>power 3 state:</Label>
+				<List class="self" filter="powerDev3" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit3" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>power 3 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev4" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="4,5,6,7,8">
+				<Label>power 4 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState4" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="4,5,6,7,8">
+				<Label>power 4 state:</Label>
+				<List class="self" filter="powerDev4" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit4" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="4,5,6,7,8">
+				<Label>power 4 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev5" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="5,6,7,8">
+				<Label>power 5 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState5" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="5,6,7,8">
+				<Label>power 5 state:</Label>
+				<List class="self" filter="powerDev5" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit5" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="5,6,7,8">
+				<Label>power 5 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev6" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="6,7,8">
+				<Label>power 6 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState6" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="6,7,8">
+				<Label>power 6 state:</Label>
+				<List class="self" filter="powerDev6" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit6" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="6,7,8">
+				<Label>power 6 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev7" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="7,8">
+				<Label>power 7 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState7" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="7,8">
+				<Label>power 7 state:</Label>
+				<List class="self" filter="powerDev7" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit7" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="7,8">
+				<Label>power 7 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="powerDev8" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="8">
+				<Label>power 8 device:</Label>
+				<List class="self" filter="power" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="powerState8" type="menu" defaultValue="0" visibleBindingId="powerCount" visibleBindingValue="8">
+				<Label>power 8 state:</Label>
+				<List class="self" filter="powerDev8" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="powerUnit8" type="menu" defaultValue="W" visibleBindingId="powerCount" visibleBindingValue="8">
+				<Label>power 8 unit of the source state:</Label>
+				<List>
+					<Option value="mW">mW</Option>
+					<Option value="W">W</Option>
+					<Option value="kW">kW</Option>
+				</List>
+			</Field>
+			<Field id="sep_current" type="separator"/>
+			<Field id="currentCount" type="menu" defaultValue="1">
+				<Label>number of current / amps (A) sources:</Label>
+				<List>
+					<Option value="0">0</Option>
+					<Option value="1">1</Option>
+					<Option value="2">2</Option>
+					<Option value="3">3</Option>
+					<Option value="4">4</Option>
+					<Option value="5">5</Option>
+					<Option value="6">6</Option>
+					<Option value="7">7</Option>
+					<Option value="8">8</Option>
+				</List>
+			</Field>
+			<Field id="currentSumUnit" type="menu" defaultValue="A">
+				<Label>unit of the current sum and of current1..8:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="current_EnableMinMax" type="checkbox" defaultValue="true">
+				<Label>current sum: daily min / max / ave:</Label>
+				<Description>states currentSumMinToday .. currentSumAveYesterday</Description>
+			</Field>
+			<Field id="currentDev1" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>current 1 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState1" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>current 1 state:</Label>
+				<List class="self" filter="currentDev1" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit1" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>current 1 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev2" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>current 2 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState2" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>current 2 state:</Label>
+				<List class="self" filter="currentDev2" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit2" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>current 2 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev3" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>current 3 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState3" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>current 3 state:</Label>
+				<List class="self" filter="currentDev3" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit3" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>current 3 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev4" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="4,5,6,7,8">
+				<Label>current 4 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState4" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="4,5,6,7,8">
+				<Label>current 4 state:</Label>
+				<List class="self" filter="currentDev4" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit4" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="4,5,6,7,8">
+				<Label>current 4 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev5" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="5,6,7,8">
+				<Label>current 5 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState5" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="5,6,7,8">
+				<Label>current 5 state:</Label>
+				<List class="self" filter="currentDev5" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit5" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="5,6,7,8">
+				<Label>current 5 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev6" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="6,7,8">
+				<Label>current 6 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState6" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="6,7,8">
+				<Label>current 6 state:</Label>
+				<List class="self" filter="currentDev6" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit6" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="6,7,8">
+				<Label>current 6 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev7" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="7,8">
+				<Label>current 7 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState7" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="7,8">
+				<Label>current 7 state:</Label>
+				<List class="self" filter="currentDev7" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit7" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="7,8">
+				<Label>current 7 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="currentDev8" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="8">
+				<Label>current 8 device:</Label>
+				<List class="self" filter="current" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="currentState8" type="menu" defaultValue="0" visibleBindingId="currentCount" visibleBindingValue="8">
+				<Label>current 8 state:</Label>
+				<List class="self" filter="currentDev8" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="currentUnit8" type="menu" defaultValue="A" visibleBindingId="currentCount" visibleBindingValue="8">
+				<Label>current 8 unit of the source state:</Label>
+				<List>
+					<Option value="mA">mA</Option>
+					<Option value="A">A</Option>
+				</List>
+			</Field>
+			<Field id="sep_energy" type="separator"/>
+			<Field id="energyCount" type="menu" defaultValue="1">
+				<Label>number of energy sources:</Label>
+				<List>
+					<Option value="0">0</Option>
+					<Option value="1">1</Option>
+					<Option value="2">2</Option>
+					<Option value="3">3</Option>
+					<Option value="4">4</Option>
+					<Option value="5">5</Option>
+					<Option value="6">6</Option>
+					<Option value="7">7</Option>
+					<Option value="8">8</Option>
+				</List>
+			</Field>
+			<Field id="energySumUnit" type="menu" defaultValue="Wh">
+				<Label>unit of the energy sum and of energy1..8:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energy_EnableMinMax" type="checkbox" defaultValue="true">
+				<Label>energy sum: daily min / max / ave:</Label>
+				<Description>states energySumMinToday .. energySumAveYesterday</Description>
+			</Field>
+			<Field id="energyDev1" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>energy 1 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState1" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>energy 1 state:</Label>
+				<List class="self" filter="energyDev1" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit1" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="1,2,3,4,5,6,7,8">
+				<Label>energy 1 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev2" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>energy 2 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState2" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>energy 2 state:</Label>
+				<List class="self" filter="energyDev2" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit2" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="2,3,4,5,6,7,8">
+				<Label>energy 2 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev3" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>energy 3 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState3" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>energy 3 state:</Label>
+				<List class="self" filter="energyDev3" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit3" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="3,4,5,6,7,8">
+				<Label>energy 3 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev4" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="4,5,6,7,8">
+				<Label>energy 4 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState4" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="4,5,6,7,8">
+				<Label>energy 4 state:</Label>
+				<List class="self" filter="energyDev4" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit4" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="4,5,6,7,8">
+				<Label>energy 4 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev5" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="5,6,7,8">
+				<Label>energy 5 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState5" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="5,6,7,8">
+				<Label>energy 5 state:</Label>
+				<List class="self" filter="energyDev5" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit5" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="5,6,7,8">
+				<Label>energy 5 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev6" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="6,7,8">
+				<Label>energy 6 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState6" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="6,7,8">
+				<Label>energy 6 state:</Label>
+				<List class="self" filter="energyDev6" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit6" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="6,7,8">
+				<Label>energy 6 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev7" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="7,8">
+				<Label>energy 7 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState7" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="7,8">
+				<Label>energy 7 state:</Label>
+				<List class="self" filter="energyDev7" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit7" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="7,8">
+				<Label>energy 7 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="energyDev8" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="8">
+				<Label>energy 8 device:</Label>
+				<List class="self" filter="energy" method="sumMetersFilterDevices"/>
+				<CallbackMethod>sumMetersDevCALLBACK</CallbackMethod>
+			</Field>
+			<Field id="energyState8" type="menu" defaultValue="0" visibleBindingId="energyCount" visibleBindingValue="8">
+				<Label>energy 8 state:</Label>
+				<List class="self" filter="energyDev8" method="sumMetersFilterStates" dynamicReload="true"/>
+			</Field>
+			<Field id="energyUnit8" type="menu" defaultValue="Wh" visibleBindingId="energyCount" visibleBindingValue="8">
+				<Label>energy 8 unit of the source state:</Label>
+				<List>
+					<Option value="Wh">Wh</Option>
+					<Option value="kWh">kWh</Option>
+					<Option value="MWh">MWh</Option>
+					<Option value="Ws">Ws (J)</Option>
+				</List>
+			</Field>
+			<Field id="sepPrintPropsStates" type="separator"/>
+			<Field id="printPropsStates" type="button">
+				<Label>print properties and states of this device to indigo log:</Label>
+				<Title>PRINT</Title>
+				<CallbackMethod>sumMetersPrintCALLBACK</CallbackMethod>
+			</Field>
+		</ConfigUI>
+		<States>
+			<!-- power / current / energy sums, slots, statistics and source_ states are created by the plugin (getDeviceStateList), only for the kinds and slots in use -->
+			<State id="lastSumUpdate">
+				<ValueType>String</ValueType>
+				<TriggerLabel>lastSumUpdate</TriggerLabel>
+				<ControlPageLabel>lastSumUpdate</ControlPageLabel>
+			</State>
+		</States>
+	</Device>
+</Devices>

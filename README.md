@@ -4,12 +4,14 @@ Indigo plugin with a toolbox for maintaining the Indigo server itself. It prints
 Indigo installation (devices, variables, triggers, schedules, action groups, z-wave neighbors,
 battery levels, running plugins), it queries and cleans up the **SQL logger database** (SQLite or
 PostgreSQL), it backs up and repairs that database, it tracks the CPU used by Indigo and by every
-plugin, and it reads the Mac's temperatures and fan speeds.
+plugin, it reads the Mac's temperatures and fan speeds, and it can monitor the health of the Mac
+itself with a **macOS health** device. A **sumMeters** device adds up the power, current and energy of other devices.
 
-The plugin creates **no Indigo devices**. Everything is done from the plugin menu, from actions in
-triggers/schedules/action groups, and through a handful of variables it writes.
+The plugin creates Indigo devices only if you add a **macOS health** or a **sumMeters** device (see below). Everything
+else is done from the plugin menu, from actions in triggers/schedules/action groups, and through a
+handful of variables it writes.
 
-- **Current version:** 2022.22.48 (2026-08-26)
+- **Current version:** 2022.22.66 (2026-11-08)
 - **Author:** Karl Wachs
 - **Plugin ID:** `com.karlwachs.utilities`
 - **Indigo Server API:** 3.0
@@ -43,7 +45,18 @@ triggers/schedules/action groups, and through a handful of variables it writes.
 
 ## Menu items
 
-**Ping an IP device** — pings an IP or hostname, result to the log.
+**Ping / test network access** — tests whether *Indigo itself* can reach a host and tells why not. Enter the IP address,
+pick the kind of test (this is the kind of test, not the port) and press `EXECUTE`:
+
+- **ping** (ICMP, `/sbin/ping`), the ping output goes to the log
+- **TCP connect** to `IP:port` (the port field appears for TCP and UDP; common ports are listed below it)
+- **UDP / multicast send** to `IP:port`, the operation macOS blocks first when *Local Network* access is denied (mDNS: `224.0.0.251:5353`)
+
+The test runs inside the Indigo process, so it uses Indigo's own macOS *Local Network* permission (a test in Terminal has a
+separate permission and cannot show the block). It also checks the public internet. Host not reachable but internet reachable
+with a socket error 65 or 51 means the Local Network block: enable Indigo in *System Settings > Privacy & Security > Local
+Network* and reboot. Internet not reachable either is a general network problem. The verdict goes to the log and to the
+Status line of the dialog.
 
 **Print Stuff to log** — one dialog with a `PRINT` button per item:
 
@@ -88,6 +101,222 @@ using SQLite.**
 
 **Prune individual devices and variables in SQLlogger** — delete the history of one device or one
 variable older than N days. Has a TEST button that only prints the SQL it would run.
+
+## Device: macOS health
+
+Add a device of type **macOS health** (model *utilities → macOS health*) to watch the Mac that runs
+the Indigo server. It measures **every 5 minutes**. Each measurement is the **average of 2 readings
+45 seconds apart** (cpu, network and busiest apps; memory, disk, load and mounts are read at the end) and it writes the result into device states, so they can be used in triggers,
+control pages and the SQL logger. One device is enough; the plugin does nothing for this feature
+while no such device exists. With the config option **create the "macOS health" device automatically**
+(default on) the plugin creates one device named *Mac health* at start if there is none. Untick the
+option if you delete the device and do not want it back.
+
+| States | What it is |
+|---|---|
+| `cpuAvg`, `cpuUser`, `cpuSystem` | cpu busy / used by apps / used by the system, in **% of all cores**, average over the measure interval (from the kernel tick counters, so nothing is missed between two measurements) |
+| `cpuMax` | highest cpu of the 15 second readings the plugin takes between two measurements, so a short spike is not averaged away |
+| `cpuAvg24h`, `cpuMax24h` | average and max over the last 24 hours |
+| `load1`, `load5`, `load15`, `cpuCores` | load average and number of cores |
+| `memUsedPct`, `memUsedGB`, `memTotalGB` | memory used **as Activity Monitor counts it**: app + wired + compressed memory. File cache is not counted, so the value does not sit near 100% all the time like the `PhysMem` line of `top` |
+| `memAvg24h`, `memMax24h` | average and max of `memUsedPct` over the last 24 hours |
+| `memPressure`, `swapUsedMB` | the system memory pressure (`normal` / `warning` / `critical`) and swap in use |
+| `diskUsedPct`, `diskFreeGB` | the startup disk |
+| `netInKBps`, `netOutKBps` | network received / sent, average KB/s over the measure interval, all ethernet and wifi interfaces (`en0`, `en1`, ..) or the ones listed in the dialog |
+| `netInMax24h`, `netOutMax24h` | the highest interval average of the last 24 hours |
+| `bridgeInKBps`, `bridgeOutKBps`, `bridgeInMax24h`, `bridgeOutMax24h` | the same for the **thunderbolt bridge** (`bridge0`), the fast link between two Macs used for screen sharing or file copies. It is counted separately and not in the network states and limits above, so a screen sharing session does not trip the network limits. The states exist only if the bridge exists |
+| `topProcName`, `topProcCpu`, `topProcList` | the app with the highest cpu use in the interval, its cpu in **% of one core** (100 = one full core, as in `top`), and the top 3 as `WindowServer 42%, Indigo 26%, ..`. All processes with the same name count as one app, so the many helpers of a browser add up. The cpu is the cpu time each process used since the last measurement, not a momentary `%CPU` |
+| `mountCount`, `tmSnapshotMounts`, `authdMemMB` | mounted volumes, how many of them are Time Machine snapshot volumes (`/Volumes/.timemachine/..`), and the resident memory of macOS' `authd` in MB (see *authd leak* below) |
+| `uptimeHours` | hours since the Mac was started |
+| `localNetworkMulticast` | **live** test each measurement: whether the Indigo process can send multicast right now — `ok` or `blocked (errno 65)`. This is the authoritative "can Indigo reach the LAN" signal (see *Local Network / multicast* below) |
+| `multicastDeniedCount`, `multicastDeniedApps` | the **stored** macOS consent policy: how many apps have `DenyMulticast=true`, and Indigo's own ids if they are among them. Informational — the stored policy can lag the live state |
+| `healthStatus`, `warnings`, `lastMeasured` | `starting` / `ok` / `warning`, which limits are exceeded (`cpu`, `mem`, `disk`) and when the last measurement ran |
+
+The schedule is fixed: a cycle starts every 5 minutes with a first set of readings, 45 seconds later
+the first reading is taken (what happened in these 45 seconds), 45 seconds after that the second one, and the
+states show the average of the two. The first measurement is shown about 90 seconds after the device starts.
+`cpuMax` still covers the whole 5 minutes (the cpu is read every 15 seconds in between). The 24 hour values are kept in memory and
+start again after the plugin restarts.
+
+### Limits
+
+Tick **Print a warning to the log when a limit is exceeded** in the device dialog and fill in any of
+the limits below. A field left empty is not checked. All fields are always visible in the dialog.
+
+| Warning when .. | Unit |
+|---|---|
+| CPU average over the measure interval is above | % of all cores |
+| CPU max (peak of the 15 second readings) is above | % of all cores |
+| the busiest app uses more than | % of one core (100 = one core) |
+| load average (5 min) is above | load |
+| memory used is above | % |
+| memory pressure reaches | `warning` (or `critical`) / `critical` |
+| swap used is above | MB |
+| startup disk used is above | % |
+| startup disk free is below | GB |
+| network in / network out (average of the 2 readings) is above | Mb/s (megabit per second; 1 Mb/s = 122 KByte/s) |
+| mounted volumes is above (suggested 60) | number |
+| Time Machine snapshot volumes mounted is above (suggested 20) | number |
+| authd memory is above (suggested 500) | MB |
+
+A limit is reported only when it is exceeded at two measurements in a row, so a single short peak gives no warning (with a 5 min window that means about 5 to 10 minutes). The warning is then printed at every measurement while the value stays beyond its limit, the cpu warnings
+name the busiest apps, and a normal log line tells you when the value is back within the limit.
+`healthStatus` is `warning` meanwhile, `warnings` lists the limits, and the device icon turns to the
+tripped state, so a trigger on *device state changed* can send a notification as well.
+
+```
+macOsHealth 'Mac health': CPU average 93 % is above the limit of 90 % (average of 2 readings of 45 sec each)
+    busiest apps:
+      python3 [4711]                          720%  avg 3.1%  412 MB  up 2 h 5 min
+      IndigoPluginHost3 piBeacon [27541]       31%  avg 2.0%  412 MB  up 1 d 11 h  com.karlwachs.piBeacon v2026.1.3; incl. 1 sub process 4%
+      Chrome Helper x6 [2208]                  26%  avg 1.1%  1,950 MB  up 3 h 2 min
+macOsHealth 'Mac health': memory used 91 % is above the limit of 90 %;  58.2 of 64 GB, pressure warning
+```
+
+In the busiest apps list the number in brackets is the process id (use it in Activity Monitor or `top -pid`). Processes with the same name are added up as one app, written `name xN [pid]` with N processes and the pid of the busiest one. Every Indigo plugin runs in its own `IndigoPluginHost3` process (the 3 is the Indigo plugin API version, not a counter), so these are listed one by one with the plugin name, e.g. `IndigoPluginHost3 piBeacon [27541] 30%`.
+
+What the busiest apps entries tell (the same for every app, plugin hosts get the first two items too):
+
+- `com.karlwachs.piBeacon v2026.1.3` plugin id and installed version, read from the `Info.plist` of the plugin.
+- `average since start` the cpu the app used on average since it started: 30% now against 2% on average is a burst, 30% against 28% is its normal load.
+- memory (real MB) and `up` its run time: a plugin that was just restarted shows `up 3 min`.
+- `incl. N sub processes` the processes a plugin started (python, ping, ssh, ..) are added to the plugin, they are not listed as separate apps.
+- the detailed report for all plugins, including their open files, stays in the menu *Print plugin id, names, cpu, ...*.
+
+### In the device dialog
+
+- The dialog explains every state in its own section.
+- The **Print states** button writes all states of the saved device to the log, grouped (status, CPU,
+  memory, disk, network, busiest apps), with unit and meaning, followed by the limits next to the
+  current values. Save changes with OK first; the button shows the saved device.
+
+### Which network interfaces are counted
+
+- **Network states** (`netInKBps`, ..): by default all `en*` interfaces (ethernet, wifi) that are **not a member of a bridge**.
+  Interfaces that belong to a bridge (for example `en2`..`en4` of the thunderbolt bridge `bridge0`) are left out because their
+  traffic is counted by the bridge. The field *Network interfaces to add up* in the device dialog replaces this by a list you
+  give, e.g. `en0`. Local traffic (`lo0`: the Indigo server talking to its plugin processes, MQTT, ..) is never counted
+  unless you list `lo0` - it is often several MB/s on an Indigo Mac and is not network load.
+- **Bridge states** (`bridgeInKBps`, ..): the interfaces in the field *Bridge (thunderbolt link) to count separately*,
+  default `bridge0`; empty = off.
+
+### authd leak (many mounted Time Machine backup volumes)
+
+macOS checks an authorization for **every mounted volume twice a minute**, and its service `authd` leaks a
+few hundred bytes with every check, so `authd` can grow over the weeks (an Indigo Mac with 297 mounts reached 22 GB after
+68 days, a Mac with 81 mounts 8.7 GB). On a Mac that backs up to Time Machine the many mounts can come from Time Machine
+itself: while it makes a backup it can mount its old backups as volumes (`/Volumes/.timemachine/<disk>/<date>.backup`, one per
+backup) and may give them back only slowly. Whether that happens, and how fast, depends on the macOS version, on the number of
+backups and on the destination disks. Example, measured on one Indigo Mac (macOS 26, two Time Machine disks, hourly backups):
+about 100 volumes per minute during a backup, 300 after 3 minutes, and a few per minute given back afterwards, so there were
+always a few hundred. Normal for a Mac without Time Machine is a handful of mounts and `authd` in the tens of MB. The states are
+`tmSnapshotMounts` (backup volumes), `mountCount` (all volumes, also disk images and network shares) and `authdMemMB` (resident
+size, it understates the real size once the pages are compressed). The measurement is one `/sbin/mount` and one `ps` per
+measurement, no `sudo`.
+
+**Device edit, "Time Machine backup volumes"** (explained there as well):
+
+| choice | what the plugin does |
+|---|---|
+| **watch authd only** (default, recommended) | no warning for the number of mounted volumes (mount count and snapshot limits are not checked), only when `authd` is above its limit (500 MB). That first warning says how many backup volumes are mounted and gives the commands to unmount them by hand. |
+| warn when more volumes than the limits are mounted | also warns at the two volume limits (dialog defaults 60 and 20). Set them above the number that is normal on this Mac, if Time Machine mounts its backups that is the number of backups or more. |
+
+The plugin never unmounts anything. Version 2022.22.62 and 2022.22.63 could do that automatically (a sudo rule and a
+launchd job); that was removed again, the volumes are only unmounted by hand. A device that had the old box or the removed
+third choice is treated as "watch authd only".
+
+**By hand.** The commands are short, so they can be copied from the log. In a terminal on the Mac that makes the backups:
+
+```
+sudo bash "/Library/Application Support/Perceptive Automation/Indigo 2026.1/Plugins/utilities.indigoPlugin/Contents/Server Plugin/tmUnmount/tm_unmount_snapshots.sh"
+sudo killall authd
+```
+
+The first line starts the script `tmUnmount/tm_unmount_snapshots.sh`: it says what it found (also when nothing is mounted),
+does nothing while a backup is running (run it again later), otherwise it unmounts all `/Volumes/.timemachine/*` volumes,
+shows each one (`3/109 ..`) and ends with `unmounted 109 of 109 Time Machine backup volumes, 0 left`. About 5 seconds
+per volume (on the example Mac 100 volumes took about 9 minutes). While the volumes are not mounted the backups may not show up
+in the Time Machine window, Time Machine mounts them again when it needs them. `bash tm_unmount_snapshots.sh --dry` only shows what it would do and needs
+no `sudo`. The second line gives the memory of `authd` back, a reboot does the same. The device option **Expert advice on/off**
+(default on) switches the advice text in the warnings off.
+
+### Local Network / multicast
+
+macOS gates **Local Network** access per app. When an app (here the Indigo server / plugin host) is denied, its
+**multicast and TCP/UDP to local devices fail with errno 65** while the public internet still works — so a plugin
+like Hue Lights suddenly cannot reach its bridge, usually right after a macOS or Indigo upgrade.
+
+Each measurement the device does a **live multicast send from the Indigo process** and stores the result in
+`localNetworkMulticast` (`ok` / `blocked (errno 65)`). Because it runs inside Indigo, this is authoritative for
+what Indigo can actually reach — a test in Terminal has its own separate Local Network grant and cannot see the
+block. With the device option **Warn when an app is denied Local Network (multicast)** (default on), the device
+logs one warning when this flips to blocked (not every measurement), and a normal line when it recovers.
+
+It also reads the stored consent store (`/Library/Preferences/com.apple.networkextension.plist`, an
+NSKeyedArchiver archive, read-only, no `sudo`) into `multicastDeniedCount` / `multicastDeniedApps` for information.
+**The stored `DenyMulticast=true` policy can lag the live state** — a Mac can list `com.perceptiveautomation.indigo-server`
+as denied while the live send still succeeds — so the warning uses the live test, not the stored policy.
+
+Fix when it is really blocked: **System Settings → Privacy & Security → Local Network**, enable Indigo, then
+reboot. A stuck case (toggle and `tccutil reset` both failing) was resolved by updating to **macOS 27.2** and
+answering the "allow access to local devices" prompt **yes**, which let the OS clear the block.
+
+### Self reporting
+
+Measuring costs a little cpu itself (the plugin process and the short commands `ps`, `vm_stat`, `netstat`,
+.. it starts). With the device option **Self reporting** off (default) that cpu is taken out of `cpuAvg`,
+`cpuUser`, `cpuSystem` and `cpuMax` (read from the process' own resource usage) and the plugin process and
+its commands are not listed as busiest app, so the device reports the load of everything else. Other plugins
+keep showing up even though they run in processes with the same name. Switch it on to count the plugin like
+any other program.
+
+### Indigo folder
+
+In the plugin config, **DEVICES folder** (default `utilities`) is the Indigo folder the macOS health
+devices are moved into when they are started and are not in a folder yet. The folder is created if
+needed. A device you put into another folder yourself stays there; empty = never move.
+
+The code that reads the Mac is in `Contents/Server Plugin/macHealth/macHealth.py`. It uses no
+third party packages: cpu comes from `host_statistics` through ctypes, the rest from `vm_stat`,
+`sysctl`, `netstat` and `ps`, about four short commands per measurement.
+
+## Device: sumMeters
+
+Adds up power, current (amps) and energy from other Indigo devices, for example the phases and channels of several energy meters. Any device with numeric states works, from any plugin.
+
+### Setup
+
+1. Create a new Indigo device, type *utilities*, model *sumMeters*.
+2. For power, current and energy, choose how many sources to add (0–8, default 1) and the unit of the sum.
+3. For each source, choose a device, one of its states and the unit that state is in. The state menu shows each state's current value. When you pick a device, a state with a matching name (power, current/amp, energy) is preselected. If the state name ends in a unit, such as `energy_kWh`, that unit is preselected too. A slot left without a device is skipped.
+4. Choose which sum the device list shows, then save.
+
+Units: power mW, W, kW; current mA, A; energy Ws (J), Wh, kWh, MWh. The defaults are W, A and Wh. Each source value is converted to the unit of its sum.
+
+### States
+
+| State | Meaning |
+|---|---|
+| `power1`…`power8`, `current1`…`current8`, `energy1`…`energy8` | source values, in the unit of the sum |
+| `powerSum`, `currentSum`, `energySum` | the totals |
+| `powerSumMinToday`, `powerSumMinTodayAt` | lowest sum today and when (same for current and energy) |
+| `powerSumMaxToday`, `powerSumMaxTodayAt` | highest sum today and when |
+| `powerSumAveToday` | time-weighted average since midnight: each value counts for as long as it lasted |
+| `…Yesterday`, `…YesterdayAt` | the same for yesterday, moved over at midnight |
+| `source_Power`, `source_Current`, `source_Energy` | source device ids in slot order, e.g. `1378652208, 51092918` |
+| `lastSumUpdate` | time of the last update |
+
+The plugin creates these states only for the kinds and slots in use: a sum of 3 power sources has `power1`…`power3`, `powerSum`, its statistics and `source_Power`, and no current or energy states. Change the sources and save, and the states follow. The checkbox *daily min / max / ave* under each kind turns its statistics states off.
+
+After a plugin restart, today's values continue from the states.
+
+### Updates
+
+The sums update as soon as a source state changes. If nothing has changed for 5 minutes, the device rereads all sources and writes its states anyway, including `lastSumUpdate`. A source that is missing or not a number counts as 0, and the plugin logs a warning once.
+
+### Sum of sums
+
+A sumMeters device can be a source of another one, for example phases → floor → building → site. Picking a sumMeters device as a source preselects its `powerSum`, `currentSum` or `energySum` and its unit. Saving refuses a loop, such as A adding up B while B adds up A, and the message shows the loop. Don't add the same meter both directly and through a lower-level sum, or it is counted twice.
 
 ## Actions
 
@@ -236,6 +465,15 @@ not queue it twice. Each report ends with the list of plugins still waiting.
   `print` (optionally `print-cumtime`, `print-calls`, …) to profile the plugin with cProfile.
   Results go to `~/indigo/utilities/timeStats.txt` / `.dump`.
 - **Mac password** — only for `powermetrics` and the reboot action.
+- **Store the passwords encrypted** (default on) — the Mac and postgres passwords are stored in the plugin
+  prefs as `enc1:...` (HMAC-SHA256 keystream + authentication tag, key derived from this Mac's hardware
+  UUID, standard library only), so they are not readable in the prefs file. The checkbox is the flag that
+  says whether the stored passwords are encrypted: prefs of older versions have no flag, their plain
+  text passwords keep working and are encrypted once at the first start. Untick it to store plain text
+  again. The password fields show the stored value: leave it to keep the password, type a new one to
+  replace it. Encrypted passwords only work on the Mac that made them (restoring the prefs on another
+  Mac: enter them again; the log says so). The passwords are also masked (`*****`) in the commands the
+  plugin writes to the log.
 - **Locale language / character set** — used when running `ps`; match what `locale` prints in a
   terminal.
 - **CPU tracking** — see above.

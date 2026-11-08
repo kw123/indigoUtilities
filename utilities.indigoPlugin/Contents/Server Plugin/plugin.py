@@ -17,6 +17,10 @@ import traceback
 import codecs
 import ctypes
 import re
+import collections
+import macHealth.macHealth as MH
+import sumMeters.sumMeters as SM
+import pwCrypt
 
 
 '''
@@ -101,7 +105,11 @@ class Plugin(indigo.PluginBase):
 			try:	os.makedirs(self.indigoLogPluginDir)
 			except:	pass
 		
-		self.yourPassword	      		= self.pluginPrefs.get(		"yourPassword",		"")
+		self.pw							= pwCrypt.PwCrypt(self.pluginId)
+		self.passwordsEncrypted			= False
+		self.yourPassword	      		= ""
+		self.postgresPassword			= ""
+		self.loadPasswords()
 		self.localeLanguage     		= self.pluginPrefs.get(		"localeLanguage",	"en_US")
 		self.enccodingChar      		= self.pluginPrefs.get(		"enccodingChar","utf-8")
 		self.userName           		= pwd.getpwuid( os.getuid() )[ 0 ]
@@ -109,7 +117,6 @@ class Plugin(indigo.PluginBase):
 		self.liteOrPsql					= self.pluginPrefs.get(		"liteOrPsql",		"sqlite")
 		self.liteOrPsqlString			= self.pluginPrefs.get(		"liteOrPsqlString",	"/Library/PostgreSQL/bin/psql indigo_history postgres ")
 		self.postgresUserId				= self.pluginPrefs.get(		"postgresUserId",	"postgres")
-		self.postgresPassword			= self.pluginPrefs.get(		"postgresPassword",	"")
 		if self.postgresPassword != "" and self.liteOrPsql.find("psql") >-1: 
 			self.postgresPasscode 		= "PGPASSWORD="+self.postgresPassword +" "
 		else: self.postgresPasscode 	= ""
@@ -122,6 +129,15 @@ class Plugin(indigo.PluginBase):
 		self.varID 						= 0
 		self.quitNow					= "" # set to !="" when plugin should exit ie to restart, needed for subscription -> loop model
 		self.printNumberOfRecords 		= 0
+		self.mac						= MH.MacHealth()	# measurements for the macOsHealth devices
+		self.mac.indigoPath			= self.indigoPath	# to read plugin id and version of the busy plugins
+		self.macHealthDevs				= {}				# devId -> running data of each macOsHealth device
+		self.SM							= SM.SumMeters(self)	# sumMeters devices: add up power, current, energy of other devices
+		self.macFineLast				= 0
+		self.macFineTicks				= None
+		self.macFineOwn					= None
+		self.deviceFolderName			= self.pluginPrefs.get(		"deviceFolderName",	"utilities")	# indigo folder for the macOsHealth devices
+		self.autoCreateMacHealth		= self.prefIsTrue(self.pluginPrefs.get("autoCreateMacHealth", True))	# create one macOsHealth device if there is none
 		self.detailSampleSecs			= 120	# how long "detailed info for one plugin" samples cpu/memory
 		self.detailSampleEvery			= 2		# ps %CPU covers roughly the last 2 seconds
 		self.pluginDetailQueue			= []	# plugins waiting for a detailed report, they run one after the other
@@ -201,6 +217,7 @@ class Plugin(indigo.PluginBase):
 		self.setLogfile(self.pluginPrefs.get("logFileActive2", "standard"))
 		self.ML.myLog( text="initialized")
 
+		self.macHealthAutoCreate()
 		return
 
 ####-------------------------------------------------------------------------####
@@ -213,11 +230,63 @@ class Plugin(indigo.PluginBase):
 
 	########################################
 	def deviceStartComm(self, dev):
+		if dev.deviceTypeId == SM.devType:
+			self.SM.start(dev)
+			return
+		if dev.deviceTypeId == "macOsHealth":
+			try:	dev.stateListOrDisplayStateIdChanged()	# pick up new states after a plugin update
+			except:	pass
+			self.macHealthStart(dev)
 		return
-	
+
+	########################################
+	def getDeviceStateList(self, dev):
+		stateList = indigo.PluginBase.getDeviceStateList(self, dev)
+		if dev.deviceTypeId == SM.devType and stateList is not None:
+			return self.SM.deviceStateList(dev, stateList)	# sumMeters: states only for the kinds and slots in use
+		return stateList
+
 	########################################
 	def deviceStopComm(self, dev):
+		self.macHealthDevs.pop(dev.id, None)
+		self.SM.stop(dev.id)
 		return
+
+	########################################
+	def deviceUpdated(self, origDev, newDev):
+		indigo.PluginBase.deviceUpdated(self, origDev, newDev)
+		self.SM.deviceUpdated(origDev, newDev)	# sumMeters: a source state changed
+		return
+
+	########################################
+	# sumMeters device edit, indigo calls these by name
+	def sumMetersFilterDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
+		return self.SM.filterSourceDevices(filter, valuesDict, typeId, targetId)
+
+	def sumMetersFilterStates(self, filter="", valuesDict=None, typeId="", targetId=0):
+		return self.SM.filterSourceStates(filter, valuesDict, typeId, targetId)
+
+	def sumMetersDevCALLBACK(self, valuesDict, typeId="", devId=0):
+		return self.SM.sourceDevCallback(valuesDict, typeId, devId)
+
+	def sumMetersPrintCALLBACK(self, valuesDict, typeId="", devId=0):
+		return self.SM.printPropsStates(valuesDict, typeId, devId)
+
+	########################################
+	def validateDeviceConfigUi(self, valuesDict, typeId, devId):
+		if typeId == SM.devType: return self.SM.validate(valuesDict, devId)
+		if typeId != "macOsHealth": return (True, valuesDict)
+		errors = indigo.Dict()
+		for key, field, label, unit, direction in self.macHealthLimitDefs:
+			val = str(valuesDict.get(field,"")).strip()
+			if val == "": continue
+			try:
+				if not 0 < float(val) <= (100 if unit == "%" else 1e12): raise ValueError
+			except:
+				errors[field] = "enter a number " + ("between 0 and 100" if unit == "%" else "above 0") + ", or leave empty"
+		if len(errors) > 0:
+			return (False, valuesDict, errors)
+		return (True, valuesDict)
 	########################################
 	#def stopConcurrentThread(self):
 	#    self.ML.myLog( text="stopConcurrentThread called " + str(self.stopConcurrentCounter))
@@ -236,14 +305,13 @@ class Plugin(indigo.PluginBase):
 			if valuesDict["debug"+d]: self.debugLevel.append(d)
 
 		self.setLogfile(valuesDict["logFileActive2"])
-		self.yourPassword		= valuesDict["yourPassword"]
+		if not self.savePasswords(valuesDict): return (False, valuesDict, self.passwordErrors)
 
 		self.localeLanguage     = valuesDict["localeLanguage"]
 		self.enccodingChar      = valuesDict["enccodingChar"]
 		self.liteOrPsql			= valuesDict["liteOrPsql"]
 		self.liteOrPsqlString	= valuesDict["liteOrPsqlString"]
 		self.postgresUserId		= valuesDict["postgresUserId"]
-		self.postgresPassword	= valuesDict["postgresPassword"]
 		if self.postgresPassword != "" and self.liteOrPsql.find("psql") >-1: 
 			self.postgresPasscode 		= "PGPASSWORD="+self.postgresPassword +" "
 		else: self.postgresPasscode 	= ""
@@ -259,8 +327,84 @@ class Plugin(indigo.PluginBase):
 		self.cpuTempUnit        = valuesDict["cpuTempUnit"]
 		self.cpuTempFormat      = valuesDict["cpuTempFormat"]
 		self.PLUGINSallCalcCPU = valuesDict["PLUGINSallCalcCPU"]=="1"
+		self.deviceFolderName  = valuesDict.get("deviceFolderName", "utilities").strip()
+		wasOff = not self.autoCreateMacHealth
+		self.autoCreateMacHealth = self.prefIsTrue(valuesDict.get("autoCreateMacHealth", True))
+		if wasOff and self.autoCreateMacHealth: self.macHealthAutoCreate()
 		
 		return True, valuesDict
+
+	####-----------------  passwords in the plugin prefs: "passwordsEncrypted" says if they are encrypted ("enc1:..") or plain text ---------
+	passwordPrefs = ("yourPassword", "postgresPassword")
+
+	def prefIsTrue(self, value):
+		return value is True or str(value).lower() in ("true", "1", "yes", "on")
+
+	####-----------------  at startup: decrypt (or take as is) into self.yourPassword / self.postgresPassword; prefs without the
+	####-----------------  flag are from an older version = plain text, they are used as they are and converted to encrypted once ---------
+	def loadPasswords(self):
+		try:
+			flagKnown = "passwordsEncrypted" in self.pluginPrefs
+			self.passwordsEncrypted = self.prefIsTrue(self.pluginPrefs.get("passwordsEncrypted", False))
+			plain = {}
+			for key in self.passwordPrefs:
+				stored = self.pluginPrefs.get(key, "")
+				if self.passwordsEncrypted:
+					plain[key] = self.pw.decrypt(stored)
+					if plain[key] is None:
+						if self.pw.isToken(stored):
+							plain[key] = ""
+							self.errorLog("{} in the plugin prefs can not be decrypted (prefs from another Mac?), please enter it again in the plugin config".format(key))
+						else:
+							plain[key] = stored			# typed into the prefs by hand, it is encrypted when the config is saved the next time
+				else:
+					plain[key] = stored
+			self.yourPassword	  = plain["yourPassword"]
+			self.postgresPassword = plain["postgresPassword"]
+
+			if not flagKnown:							# prefs of an older version: plain text -> encrypt once
+				tokens = {key: self.pw.encrypt(plain[key]) for key in self.passwordPrefs}
+				if all(t is not None for t in tokens.values()):
+					for key in self.passwordPrefs:
+						self.pluginPrefs[key] = tokens[key]
+					self.pluginPrefs["passwordsEncrypted"] = True
+					self.passwordsEncrypted = True
+					indigo.server.log("passwords in the plugin prefs are now stored encrypted (untick \"store passwords encrypted\" in the config to store them as plain text)")
+				else:
+					self.errorLog("passwords in the plugin prefs can not be encrypted, the hardware id of this Mac is not readable; they stay plain text")
+		except Exception as e:
+			self.errorLog("loading the passwords from the plugin prefs failed: {}".format(e))
+
+	####-----------------  config dialog saved: the password fields hold either the old "enc1:.." (unchanged) or newly typed plain text ---------
+	def savePasswords(self, valuesDict):
+		self.passwordErrors = indigo.Dict()
+		encrypt = self.prefIsTrue(valuesDict.get("passwordsEncrypted", False))
+		new     = {}
+		for key in self.passwordPrefs:
+			shown  = valuesDict.get(key, "")
+			plain  = self.pw.decrypt(shown)
+			if plain is None:							# not an encrypted value = newly typed (or plain text from before)
+				plain = shown
+				stored = self.pw.encrypt(plain) if encrypt else plain
+			else:										# unchanged
+				stored = shown if encrypt else plain
+			if stored is None:
+				self.passwordErrors["passwordsEncrypted"] = "can not encrypt: the hardware id of this Mac is not readable"
+				return False
+			new[key] = (plain, stored)
+		for key in self.passwordPrefs:
+			valuesDict[key] = new[key][1]
+		valuesDict["passwordsEncrypted"] = encrypt
+		self.passwordsEncrypted = encrypt
+		self.yourPassword		= new["yourPassword"][0]
+		self.postgresPassword	= new["postgresPassword"][0]
+		return True
+
+	####-----------------  hide the passwords in text that goes to the log ---------
+	def maskPw(self, text):
+		for pw_ in (self.yourPassword, self.postgresPassword):
+			if len(pw_) > 0: text = text.replace(pw_, "*****")
+		return text
 
 	####-----------------	 ---------
 	def setLogfile(self,lgFile):
@@ -629,7 +773,7 @@ class Plugin(indigo.PluginBase):
 			indigo.server.log("print powermetrics info to logfile, this will take about 2 sec using: " )
 			cmd = "echo '{}' | sudo -S  /usr/bin/powermetrics -i 6 --format text  & /bin/sleep 2; echo '{}' | sudo -S  /usr/bin/killall -9 powermetrics".format(self.yourPassword, self.yourPassword)
 			ret, err = self.readPopen(cmd)
-			indigo.server.log("cmd:{}".format(cmd))
+			indigo.server.log("cmd:{}".format(self.maskPw(cmd)))
 			if len(err) > 0:
 				indigo.server.log("ret:{}".format(ret))
 				indigo.server.log("err:{}".format(err))
@@ -1545,7 +1689,7 @@ class Plugin(indigo.PluginBase):
 		
 		# add zip, doing dump and zip together eats too much CPU, need to do it in 2 steps , then remove temp file  ( dump && gzip && rm ... )
 		cmd= commandLineForDump+"  > "+  self.userIndigoPluginDir+"postgresBackup.dmp  &&  gzip "+ self.userIndigoPluginDir+"postgresBackup.dmp  > " + self.userIndigoPluginDir+"postgresBackup.zip  &&  rm "+ self.userIndigoPluginDir+"postgresBackup.dmp  &"
-		self.ML.myLog( text=cmd)
+		self.ML.myLog( text=self.maskPw(cmd))
 		subprocess.Popen(cmd, shell=True)
 		self.ML.myLog( text='to restore: 1. in pgadmin: "DROP DATABASE indigo_history;"   "CREATE DATABASE indigo_history template = template0;"  2.unzip postgresBackup.zip ; 3. "pathtopostgresapp/psql indigo_history -U postgres < postgresBackup"' )
 		self.postgresBackupStarted = time.time() 
@@ -1997,6 +2141,95 @@ class Plugin(indigo.PluginBase):
 		return valuesDict
 
 
+####-----------------   ping / test network access (macOS Local Network diagnosis)          ---------
+	def testNetworkAccessCallback(self, valuesDict="", typeId=""):
+		# Runs inside Indigo's process (same Local Network grant as any plugin), so it reflects what
+		# Indigo can actually reach - unlike a Terminal.app test, which has its own separate grant.
+		# Also probes the public internet so a Local Network block (target down, internet up) can be told
+		# apart from a real network outage. ping uses /sbin/ping; tcp/udp use plain sockets.
+		import socket
+		ip       = str(valuesDict.get("ip", "")).strip()
+		testType = valuesDict.get("testType", "ping")
+		if ip == "":
+			valuesDict["result"] = "enter an IP address"
+			return valuesDict
+
+		def tcpOk(host, p, timeout=2.0):
+			s = None
+			try:
+				s = socket.create_connection((host, p), timeout=timeout); return True, None
+			except Exception as e:
+				return False, getattr(e, "errno", None)
+			finally:
+				if s is not None:
+					try:    s.close()
+					except Exception: pass
+
+		# WAN reference check (1.1.1.1 is a DNS-free fallback)
+		internetOk = tcpOk("www.google.com", 443, 1.5)[0] or tcpOk("1.1.1.1", 443, 1.5)[0]
+
+		if testType == "ping":
+			ret, err = self.readPopen("/sbin/ping -c 2 -W 2 " + ip)
+			indigo.server.log("\nping {}:\n{}".format(ip, ret), type=" ")
+			reachable = ("bytes from" in ret) or ("0.0% packet loss" in ret) or ("0% packet loss" in ret)
+			# IMPORTANT: macOS does NOT gate ICMP/ping behind the Local Network permission - only TCP/UDP to
+			# the local subnet. So a ping reply does NOT prove Local Network access; cross-check with a TCP
+			# connect (443) so a ping "OK" cannot mask a block where ping passes but TCP/UDP fail (errno 65).
+			tcpProbe, tcpErr = tcpOk(ip, 443)
+			if reachable and tcpProbe:
+				verdict = "OK: ping to {} replied and TCP {}:443 connected. Internet reachable={}. Local Network access is working.".format(ip, ip, internetOk)
+			elif reachable and tcpErr in (65, 51) and internetOk:
+				verdict = "BLOCKED (Local Network): ping (ICMP) to {} replied, BUT TCP {}:443 failed (errno {}). macOS does not gate ICMP, so a ping reply does NOT mean access is granted - TCP/UDP to the LAN are blocked while the internet is up. This is the macOS Local Network block. Fix: System Settings > Privacy & Security > Local Network, enable Indigo, then REBOOT; if that does not stick it is an Indigo/macOS signing issue - report it to Indigo support.".format(ip, ip, tcpErr)
+			elif reachable:
+				verdict = "ping to {} replied (TCP :443 not open, but no Local Network error{}). Host is up; Local Network looks OK. If a service should answer, test its port with the TCP option.".format(ip, " (errno {})".format(tcpErr) if tcpErr else "")
+			elif internetOk:
+				verdict = "ping to {} got NO reply, but the internet IS reachable - host off / wrong IP / ICMP filtered / possible Local Network block. ICMP can be filtered on its own, so confirm with the TCP test.".format(ip)
+			else:
+				verdict = "ping to {} failed AND the internet is unreachable - general network / DNS / VPN / firewall problem.".format(ip)
+			indigo.server.log("Test network access: {}".format(verdict))
+			valuesDict["result"] = verdict
+			return valuesDict
+
+		# tcp / udp need a port
+		try:    port = int(str(valuesDict.get("port", "")).strip())
+		except Exception:
+			valuesDict["result"] = "invalid port - enter a number"
+			return valuesDict
+
+		targetOk = False; tErrno = None
+		if testType == "udp":
+			s = None
+			try:
+				s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+				try:    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+				except Exception: pass
+				s.sendto(b"\x00", (ip, port))   # a send is the operation macOS blocks first when denied
+				targetOk = True
+			except Exception as e:
+				tErrno = getattr(e, "errno", None)
+			finally:
+				if s is not None:
+					try:    s.close()
+					except Exception: pass
+		else:
+			targetOk, tErrno = tcpOk(ip, port)
+
+		errnoStr = " (errno {})".format(tErrno) if tErrno else ""
+		proto    = "UDP/multicast send" if testType == "udp" else "TCP connect"
+		if targetOk:
+			verdict = "OK: {} to {}:{} succeeded. Internet reachable={}. Local Network access is working.".format(proto, ip, port, internetOk)
+		elif tErrno in (65, 51) and internetOk:
+			verdict = "BLOCKED: {} to {}:{} failed{} but the internet IS reachable - LAN down + WAN up is the macOS Local Network block. Fix: System Settings > Privacy & Security > Local Network, enable Indigo, then REBOOT. A boot/root service cannot receive the per-user grant - run the Indigo server in your logged-in session.".format(proto, ip, port, errnoStr)
+		elif internetOk:
+			verdict = "{} to {}:{} failed{}, but the internet is reachable. The target is likely off, the IP/port is wrong, or a firewall blocks it - not a Local Network permission problem.".format(proto, ip, port, errnoStr)
+		else:
+			verdict = "{} to {}:{} failed{} AND the internet is unreachable - general network / DNS / VPN / firewall problem, not a Local Network permission issue.".format(proto, ip, port, errnoStr)
+
+		indigo.server.log("Test network access: {}".format(verdict))
+		valuesDict["result"] = verdict
+		return valuesDict
+
+
 ####-----------------   create state list for first state, add * as option          ---------
 	def filterStates0(self,filter="",valuesDict="",typeId="",devId=""):
 		if self.devID ==0: return [("0","")]
@@ -2134,7 +2367,7 @@ class Plugin(indigo.PluginBase):
 					sqlDeleteCommands= self.postgresPasscode + self.liteOrPsqlString+ "  -c "
 					
 			sqlDeleteCommands+="\"DELETE FROM "+table+ " WHERE id < " +str(firstIDtoKeep)+";\""
-			if self.ML.decideMyLog(loglevel): self.ML.myLog( text="cmd= "+ sqlDeleteCommands)
+			if self.ML.decideMyLog(loglevel): self.ML.myLog( text="cmd= "+ self.maskPw(sqlDeleteCommands))
 			if not test: 
 				ret, err = self.readPopen(sqlDeleteCommands)
 				if self.ML.decideMyLog("SQL"): self.ML.myLog( text= "SQL returned: "+ ret+"-"+err)
@@ -2603,7 +2836,7 @@ class Plugin(indigo.PluginBase):
 
 			sqlCommandText+=";\""
 
-			if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
+			if self.ML.decideMyLog("SQL"): self.ML.myLog( text=self.maskPw(sqlCommandText) , mType="SQL command= " )
 			extraMsg =""
 			ret, err = self.readPopen(sqlCommandText)
 			if err.find("is locked")>-1:
@@ -2781,7 +3014,7 @@ class Plugin(indigo.PluginBase):
 						id = dd.id
 						name=dd.name
 						sqlCommandText= pgm+ " \"SELECT COUNT(*) FROM device_history_"+str(id)+";\""
-						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
+						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=self.maskPw(sqlCommandText) , mType="SQL command= " )
 						ret, err = self.readPopen(sqlCommandText)
 						#self.ML.myLog( text=name+" "+ str(out))
 						if err.find("is locked")>-1:
@@ -2807,7 +3040,7 @@ class Plugin(indigo.PluginBase):
 						id = dd.id
 						name=dd.name
 						sqlCommandText= pgm+ " \"SELECT COUNT(*) FROM variable_history_"+str(id)+";\""
-						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=sqlCommandText , mType="SQL command= " )
+						if self.ML.decideMyLog("SQL"): self.ML.myLog( text=self.maskPw(sqlCommandText) , mType="SQL command= " )
 						ret, err = self.readPopen(sqlCommandText)
 						if err.find("is locked")>-1:
 							if self.ML.decideMyLog("SQL"): self.ML.myLog( text="error in querry data base looked trying again" )
@@ -2971,6 +3204,10 @@ class Plugin(indigo.PluginBase):
 				self.checkcProfile()
 				
 				self.checkPluginCPU()
+
+				self.macHealthCheck()
+
+				self.SM.periodic()
 
 				if self.taskList.find("makepluginDateList") > -1:
 					self.makepluginDateList()
@@ -3166,6 +3403,469 @@ class Plugin(indigo.PluginBase):
 
 		except  Exception as e:
 			self.exceptionHandler(40,e)
+
+
+	######################################################################################
+	# device type macOsHealth: cpu, memory, disk, network, busiest app of the indigo mac
+	######################################################################################
+	####-----------------  what to do about the Time Machine backup volumes (device edit): watch = only the size of authd is checked (default),
+	####-----------------  limit = also warn when more volumes than the two volume limits are mounted. Unmounting is done by hand, see tmUnmount/ ---------
+	def macHealthTmMode(self, props):
+		mode = str(props.get("tmMode", "")).strip()
+		return mode if mode in ("watch", "limit") else "watch"		# anything else, also the removed choice "unmount", counts as watch
+
+	def macHealthStart(self, dev):
+		props = dev.pluginProps
+		def number(key, default=None):
+			try:	return float(str(props.get(key,"")).strip())
+			except:	return default
+		limits = {}
+		if str(props.get("limitsEnabled","false")).lower() == "true":
+			for key, field, label, unit, direction in self.macHealthLimitDefs:
+				if number(field) is not None: limits[key] = number(field)
+			if props.get("pressureLimit","") in ["warning","critical"]: limits["pressure"] = props["pressureLimit"]
+		tmMode = self.macHealthTmMode(props)
+		if tmMode == "watch":		# the number of mounted volumes is not checked, only the size of authd
+			limits.pop("mounts", None)
+			limits.pop("tmMounts", None)
+		self.macHealthFolder(dev)
+		self.macHealthDevs[dev.id] = {
+			"phase":		0,			# 0 = a new cycle starts, 1 = readings are being taken
+			"samples":		[],			# the readings of this cycle
+			"cycleStart":	0,
+			"selfReport":	str(props.get("selfReport", "false")).lower() == "true",	# count the cpu used by this plugin itself
+			"advice":		str(props.get("expertAdvice", "true")).lower() == "true",	# the first snapshot warning adds the commands that fix it
+			"tmMode":		tmMode,		# watch / limit: what is checked about the Time Machine backup volumes, see macHealthTmMode
+			"own":			None,
+			"interfaces":	[x.strip() for x in str(props.get("netInterfaces","")).split(",") if x.strip()],
+			"bridges":		[x.strip() for x in str(props.get("bridgeInterfaces","bridge0")).split(",") if x.strip()],	# thunderbolt link between the macs, counted separately
+			"limits":		limits,
+			"baseline":		False,		# first readings of a cycle taken
+			"nextMeasure":	0,
+			"cpuPeak":		0.,
+			"history":		collections.deque(),	# (time, cpu avg, cpu max, mem %, net in, net out) of the last 24h
+			"over":			set(),		# limits that are exceeded right now and reported
+			"tripped":		set()}		# limits that were beyond the limit at the last measurement, a warning needs two in a row
+		try:	dev.updateStateOnServer("healthStatus", "starting")
+		except:	pass
+
+	####-----------------  new devices go into the indigo folder from the config, if they are not in a folder yet ---------
+	macHealthKBtoMb  = 8 * 1024 / 1e6	# the states are in KByte/s, the network limits in Mbit/s (1 Mb = 1,000,000 bit)
+	macHealthCycle   = 300		# a measurement every 5 minutes ..
+	macHealthGap     = 45		# .. made of 2 readings this many seconds apart, the values shown are their average
+
+	####-----------------	 ---------
+	def macHealthAutoCreate(self):
+		try:
+			if not self.autoCreateMacHealth: return
+			for dev in indigo.devices.iter(self.pluginId):
+				if dev.deviceTypeId == "macOsHealth": return
+			dev = indigo.device.create(protocol=indigo.kProtocol.Plugin, name="Mac health", description="created by the utilities plugin",
+				pluginId=self.pluginId, deviceTypeId="macOsHealth", props={"limitsEnabled": False, "netInterfaces": ""})
+			indigo.server.log("created the device \"{}\" to measure the health of this Mac (switch off in the plugin config: \"create the Mac health device\")".format(dev.name))
+		except Exception as e:
+			self.exceptionHandler(40,e)
+
+	####-----------------	 ---------
+	def macHealthFolder(self, dev):
+		try:
+			name = str(self.deviceFolderName).strip()
+			if name == "" or dev.folderId != 0: return
+			folderId = 0
+			try:	folderId = indigo.devices.folders.getId(name)
+			except:	pass
+			if folderId == 0:
+				folderId = indigo.devices.folder.create(name).id
+			indigo.device.moveToFolder(dev.id, value=folderId)
+		except Exception as e:
+			self.exceptionHandler(40,e)
+
+	## group, then state id, unit, meaning: used by the "print states" button of the device dialog
+	macHealthStateInfo = [
+		("Status", [
+			("healthStatus",  "",              "starting / ok / warning (a limit is exceeded)"),
+			("warnings",      "",              "limits that are exceeded right now"),
+			("lastMeasured",  "",              "time of the last measurement")]),
+		("CPU", [
+			("cpuAvg",        "%",             "cpu busy (idle not counted), % of all cores together, average of the 2 readings; = cpuUser + cpuSystem"),
+			("cpuUser",       "%",             "part of cpuAvg used by programs (apps, Indigo, plugins)"),
+			("cpuSystem",     "%",             "part of cpuAvg used by macOS for them (disk, network, drivers, memory)"),
+			("cpuMax",        "%",             "highest cpu reading in the 5 minutes, also read every 15 sec in between, shows short spikes the average hides (cpu of this plugin itself left out unless self reporting is on)"),
+			("cpuAvg24h",     "%",             "average of the cpuAvg values of the last 24 hours"),
+			("cpuMax24h",     "%",             "highest cpuMax of the last 24 hours"),
+			("cpuCores",      "",              "number of cores (100% = all of them busy)"),
+			("load1",         "",              "load average, last 1 min  (about #cores = fully used)"),
+			("load5",         "",              "load average, last 5 min"),
+			("load15",        "",              "load average, last 15 min")]),
+		("Memory", [
+			("memUsedPct",    "%",             "used = apps + wired + compressed, as activity monitor; file cache not counted"),
+			("memUsedGB",     "GB",            "used"),
+			("memTotalGB",    "GB",            "installed"),
+			("memAvg24h",     "%",             "used, average of the last 24 hours"),
+			("memMax24h",     "%",             "used, highest of the last 24 hours"),
+			("memPressure",   "",              "normal / warning / critical"),
+			("swapUsedMB",    "MB",            "memory pushed out to disk")]),
+		("Startup disk", [
+			("diskUsedPct",   "%",             "used"),
+			("diskFreeGB",    "GB",            "free")]),
+		("Network", [
+			("netInKBps",     "KB/s",          "received, average of the 2 readings"),
+			("netOutKBps",    "KB/s",          "sent, average of the 2 readings"),
+			("netInMax24h",   "KB/s",          "received, highest interval average of the last 24 hours"),
+			("netOutMax24h",  "KB/s",          "sent, highest interval average of the last 24 hours")]),
+		("Thunderbolt bridge (link between two Macs, e.g. screen sharing)", [
+			("bridgeInKBps",     "KB/s",       "received over the bridge, average of the 2 readings"),
+			("bridgeOutKBps",    "KB/s",       "sent over the bridge"),
+			("bridgeInMax24h",   "KB/s",       "received, highest interval average of the last 24 hours"),
+			("bridgeOutMax24h",  "KB/s",       "sent, highest interval average of the last 24 hours")]),
+		("Busiest apps", [
+			("topProcName",   "",              "app with the highest cpu use (with [pid]); plugin hosts are listed one by one with the plugin name"),
+			("topProcCpu",    "% of one core", "its cpu, 100 = one full core"),
+			("topProcList",   "",              "the top 3")]),
+		("Volumes and authd", [
+			("mountCount",       "",           "mounted volumes (normal: a handful)"),
+			("tmSnapshotMounts", "",           "of them Time Machine snapshot mounts (normal: 0 .. a few); macOS checks an authorization for each mounted volume twice a minute, authd leaks memory with every check"),
+			("authdMemMB",       "MB",         "resident memory of authd (normal: tens of MB); understates the real size once the pages are compressed")]),
+		("Local Network (multicast)", [
+			("localNetworkMulticast", "",       "LIVE test each measurement: can Indigo send multicast now (ok / blocked errno 65). Authoritative - this is what the warning uses"),
+			("multicastDeniedCount", "",        "stored consent policy: number of apps with DenyMulticast=true (can lag the live state)"),
+			("multicastDeniedApps",  "",        "of them, Indigo's own ids if present; enable Indigo in Privacy & Security > Local Network and reboot if it is blocked")]),
+		("System", [
+			("uptimeHours",   "h",             "since the Mac was started")])]
+
+	####-----------------  button "print states" in the device dialog: states and limits of the saved device, formatted ---------
+	def macHealthPrintStates(self, valuesDict, typeId="", devId=0):
+		try:
+			try:	dev = indigo.devices[int(devId)]
+			except:
+				indigo.server.log("macOsHealth: save the device first, then press the button again", type="macOsHealth")
+				return valuesDict
+			st    = dev.states
+			props = dev.pluginProps
+			def show(key, unit):
+				val = st.get(key)
+				if val is None or val == "": return "-"
+				if isinstance(val, str): return val
+				txt = "{:,.2f}".format(val) if key.startswith("load") else "{:,.0f}".format(val) if key in ["cpuCores", "mountCount", "tmSnapshotMounts"] else "{:,.1f}".format(val)
+				return (txt + " " + unit).strip()
+			every = "{:.0f} min (2 readings {} sec apart, averaged)".format(self.macHealthCycle / 60., self.macHealthGap)
+			width = max([len(show(key, unit)) for group, items in self.macHealthStateInfo for key, unit, text in items] + [8])
+			width = min(width, 24)
+			keyWidth = max(len(key) for group, items in self.macHealthStateInfo for key, unit, text in items) + 2
+			lines = ["", "macOsHealth '{}':  measured every {},  last measurement {}".format(dev.name, every, st.get("lastMeasured") or "- (none yet, the first one comes ~90 sec after the device started)")]
+			for group, items in self.macHealthStateInfo:
+				lines.append("")
+				lines.append("  " + group)
+				for key, unit, text in items:
+					lines.append("    {:<{k}}{:>{w}}   {}".format(key, show(key, unit), text, k=keyWidth, w=width))
+			lines.append("")
+			if str(props.get("limitsEnabled", "false")).lower() != "true":
+				lines.append("  Limits: not checked (box \"print a warning ...\" in the device dialog is not ticked)")
+			else:
+				lines.append("  Limits:  a warning is printed when ..")
+				def lbl(label, direction):
+					return label + (" is above" if direction > 0 else " is below")
+				lw = max([len(lbl(label, direction)) for key, field, label, unit, direction in self.macHealthLimitDefs] + [len("memory pressure reaches")])
+				lines.append("    {:<{lw}}   {:>22}   {:>20}".format("", "limit", "now", lw=lw))
+				current = {"cpu": "cpuAvg", "cpuMax": "cpuMax", "topApp": "topProcCpu", "load": "load5", "mem": "memUsedPct", "swap": "swapUsedMB", "disk": "diskUsedPct", "diskFree": "diskFreeGB", "netIn": "netInKBps", "netOut": "netOutKBps", "mounts": "mountCount", "tmMounts": "tmSnapshotMounts", "authd": "authdMemMB"}
+				def nowText(key, stateKey, unit):
+					if key in ("netIn", "netOut") and isinstance(st.get(stateKey), (int, float)): return "{:.3g} {}".format(st[stateKey] * self.macHealthKBtoMb, unit)
+					return show(stateKey, unit)
+				tmMode = self.macHealthTmMode(props)
+				for key, field, label, unit, direction in self.macHealthLimitDefs:
+					limit = str(props.get(field, "")).strip()
+					if tmMode == "watch" and key in ("mounts", "tmMounts"): limit = ""		# not checked in this choice
+					lines.append("    {:<{lw}}   {:>22}   {:>20}".format(lbl(label, direction), (limit + " " + unit).strip() if limit != "" else "off", nowText(key, current[key], unit) if limit != "" else "", lw=lw))
+				lines.append("    Time Machine backup volumes: " + {"watch": "only authd is watched, the number of mounted volumes is not checked", "limit": "warn above the volume limits"}[tmMode])
+				pressure = props.get("pressureLimit", "")
+				lines.append("    {:<{lw}}   {:>22}   {:>20}".format("memory pressure reaches", pressure if pressure != "" else "off", st.get("memPressure") or "-" if pressure != "" else "", lw=lw))
+			indigo.server.log("\n".join(lines), type="macOsHealth")
+		except Exception as e:
+			self.exceptionHandler(40,e)
+		return valuesDict
+
+	## key, field in the device dialog, text, unit, direction (1 = warn above the limit, -1 = warn below)
+	macHealthLimitDefs = [
+		("cpu",      "cpuLimit",      "CPU average",        "%",             1),
+		("cpuMax",   "cpuMaxLimit",   "CPU max",            "%",             1),
+		("topApp",   "topAppLimit",   "busiest app CPU",    "% of one core", 1),
+		("load",     "loadLimit",     "load average 5 min", "",              1),
+		("mem",      "memLimit",      "memory used",        "%",             1),
+		("swap",     "swapLimit",     "swap used",          "MB",            1),
+		("disk",     "diskLimit",     "startup disk used",  "%",             1),
+		("diskFree", "diskFreeLimit", "startup disk free",  "GB",           -1),
+		("netIn",    "netInMbLimit",  "network in",         "Mb/s",          1),
+		("netOut",   "netOutMbLimit", "network out",        "Mb/s",          1),
+		("mounts",   "mountsLimit",   "mounted volumes",    "",              1),
+		("tmMounts", "tmMountsLimit", "Time Machine snapshot mounts", "", 1),
+		("authd",    "authdLimit",    "authd memory (resident)", "MB",       1)]
+
+	## what to do when too many volumes are mounted, written to the log the first time the limit is exceeded
+	macHealthTmWhy = ("    macOS checks an authorization for every mounted volume twice a minute and authd leaks a few hundred bytes each time,\n"
+		"    that is what can make authd grow to many GB over weeks. Fix, in a terminal, one command per line:\n")
+
+	####-----------------  the advice that goes with the first authd / backup volume warning: short commands that can be copied from the log ---------
+	def macHealthTmAdvice(self):
+		return (self.macHealthTmWhy
+			+ "      1. unmount the backup volumes. It does nothing while a backup is running (run it again later), shows each volume and how many are left:\n"
+			+ "        sudo bash '{}tmUnmount/tm_unmount_snapshots.sh'\n".format(self.pathToPlugin)
+			+ "      2. give the memory of authd back (a reboot does the same):\n"
+			+ "        sudo killall authd")
+
+	####-----------------  called every loop pass, 5 secs ---------
+	def macHealthCheck(self):
+		if len(self.macHealthDevs) == 0:
+			self.macFineLast  = 0
+			self.macFineTicks = None
+			self.macFineOwn   = None
+			return
+		try:
+			now = time.time()
+			## cpu peak: cheap kernel readings between the measurements, no subprocess
+			if now - self.macFineLast >= 15:
+				ticks = self.mac.cpuTicks()
+				pct   = self.mac.cpuPercent(self.macFineTicks, ticks)
+				own   = self.mac.ownCpu()
+				ownPct = self.mac.ownPercent(self.macFineOwn, own, now - self.macFineLast)
+				self.macFineTicks = ticks
+				self.macFineOwn   = own
+				self.macFineLast  = now
+				if pct is not None:
+					without = self.mac.cpuWithout(pct, ownPct)
+					for d in self.macHealthDevs.values():
+						d["cpuPeak"] = max(d["cpuPeak"], (pct if d["selfReport"] else without)["busy"])
+
+			for devId in list(self.macHealthDevs):
+				d = self.macHealthDevs.get(devId)
+				if d is None or now < d["nextMeasure"]: continue
+				try:
+					dev = indigo.devices[devId]
+					if d["phase"] == 0:		# a cycle starts: readings to compare the first reading with
+						self.macHealthBaseline(d, now)
+						d["cycleStart"] = now
+						d["samples"]    = []
+						d["phase"]      = 1
+						d["nextMeasure"] = now + self.macHealthGap
+					else:
+						d["samples"].append(self.macHealthSample(d, now))
+						if len(d["samples"]) < 2:
+							d["nextMeasure"] = now + self.macHealthGap
+						else:
+							d["phase"]       = 0
+							d["nextMeasure"] = max(now + 5, d["cycleStart"] + self.macHealthCycle)
+							self.macHealthMeasure(dev, d, d["samples"], now)
+				except Exception as e:
+					d["phase"]       = 0
+					d["nextMeasure"] = now + self.macHealthGap
+					self.exceptionHandler(40,e)
+		except  Exception as e:
+			self.exceptionHandler(40,e)
+
+	####-----------------  ---------
+	def macHealthBaseline(self, d, now):
+		d["ticks"]    = self.mac.cpuTicks()
+		d["own"]      = self.mac.ownCpu()
+		d["net"]      = self.mac.netCounters(d["interfaces"])
+		d["bridgeNet"] = self.mac.netCounters(d["bridges"]) if d["bridges"] else None
+		d["procs"]    = self.mac.processes()
+		d["lastTime"] = now
+		d["cpuPeak"]  = 0.
+		d["baseline"] = True
+
+	####-----------------  one reading: what happened since the one before ---------
+	def macHealthSample(self, d, now):
+		secs  = max(1., now - d["lastTime"])
+		ticks = self.mac.cpuTicks()
+		cpu   = self.mac.cpuPercent(d["ticks"], ticks)
+		own   = self.mac.ownCpu()
+		if not d["selfReport"]:		# leave out what this plugin and the commands it started used
+			cpu = self.mac.cpuWithout(cpu, self.mac.ownPercent(d["own"], own, secs))
+		d["own"] = own
+		net   = self.mac.netCounters(d["interfaces"])
+		rates = self.mac.netRates(d["net"], net, secs)
+		bridgeNet   = self.mac.netCounters(d["bridges"]) if d["bridges"] else None
+		bridgeRates = self.mac.netRates(d.get("bridgeNet"), bridgeNet, secs)
+		d["bridgeNet"] = bridgeNet
+		procs = self.mac.processes()
+		use   = self.mac.processUse(d["procs"], procs, secs, skipSelf=not d["selfReport"])
+		d["ticks"], d["net"], d["procs"], d["lastTime"] = ticks, net, procs, now
+		return {"secs": secs, "cpu": cpu, "rates": rates, "bridgeRates": bridgeRates, "use": use}
+
+	####-----------------  one measurement: the average of the readings, set states, check limits ---------
+	def macHealthMeasure(self, dev, d, samples, now):
+		def average(name, keys):
+			got = [s[name] for s in samples if s[name] is not None]
+			if not got: return None
+			return {k: sum(x[k] for x in got) / len(got) for k in keys}
+		cpu         = average("cpu", ("busy", "user", "system"))
+		rates       = average("rates", ("in", "out"))
+		bridgeRates = average("bridgeRates", ("in", "out"))
+		secs        = sum(s["secs"] for s in samples)
+		use         = self.mac.mergeUse([(s["use"], s["secs"]) for s in samples])
+		topE        = self.mac.topEntries(use, 3)
+		top         = [(label, pct) for label, pct, u in topE]
+		mem   = self.mac.memory()
+		sysI  = self.mac.system()
+		disk  = self.mac.disk()
+		load  = os.getloadavg()
+		mnt   = self.mac.mounts()
+		authd = self.mac.authdMemMB()
+		mct   = self.mac.multicastTest()		# live: can Indigo send multicast right now (authoritative)
+		mc    = self.mac.multicastDenied()		# stored consent policy (informational, can be stale)
+		cpuMax = None
+		if cpu is not None:
+			cpuMax = max(cpu["busy"], d["cpuPeak"])
+		d["cpuPeak"] = 0.
+
+		memPct = None
+		if mem is not None:
+			memPct = mem["used"] * 100. / mem["total"]
+
+		## the last 24 hours
+		hist = d["history"]
+		hist.append((now, None if cpu is None else cpu["busy"], cpuMax, memPct, None if rates is None else rates["in"], None if rates is None else rates["out"],
+					None if bridgeRates is None else bridgeRates["in"], None if bridgeRates is None else bridgeRates["out"]))
+		while hist[0][0] < now - 86400: hist.popleft()
+		def column(i):
+			return [x[i] for x in hist if x[i] is not None]
+		cpuAvgs, cpuMaxs, mems, netIns, netOuts, bridgeIns, bridgeOuts = column(1), column(2), column(3), column(4), column(5), column(6), column(7)
+
+		topList   = ", ".join("{} {:.0f}%".format(name, pct) for name, pct in top)
+		topDetail = "\n".join(self.mac.describeTable(topE))      # one line per app, lined up
+
+		## limits
+		lim      = d["limits"]
+		warnings = {}
+		window   = "{} readings of {:.0f} sec each".format(len(samples), secs / len(samples))
+		values   = {"cpu": None if cpu is None else cpu["busy"], "cpuMax": cpuMax, "topApp": top[0][1] if top else None, "load": load[1],
+					"mem": memPct, "swap": sysI["swapUsedMB"], "disk": None if disk is None else disk["usedPct"],
+					"diskFree": None if disk is None else disk["free"]/2**30,
+					"netIn": None if rates is None else rates["in"] * self.macHealthKBtoMb, "netOut": None if rates is None else rates["out"] * self.macHealthKBtoMb,
+					"mounts": None if mnt is None else mnt["total"], "tmMounts": None if mnt is None else mnt["timeMachine"], "authd": authd}
+		beyond   = {}
+		labels   = {"pressure": "memory pressure"}
+		def fmt(x):
+			return "{:.0f}".format(x) if abs(x) >= 100 else "{:.1f}".format(x) if abs(x) >= 10 else "{:.3g}".format(x)
+		for key, field, label, unit, direction in self.macHealthLimitDefs:
+			labels[key] = label
+			if key not in lim or values[key] is None: continue
+			if (values[key] - lim[key]) * direction <= 0: continue
+			num  = (lambda x: "{:.0f}".format(x)) if key in ["mounts", "tmMounts"] else fmt
+			text = "{} {} is {} the limit of {}".format(label, (num(values[key]) + " " + unit).strip(), "above" if direction > 0 else "below", (num(lim[key]) + " " + unit).strip())
+			if key in ["cpu", "netIn", "netOut", "topApp"]: text += " (average of " + window + ")"
+			if key in ["cpu", "cpuMax", "topApp"]: text += "\n    busiest apps:\n" + topDetail
+			if key == "mem": text += ";  {:.1f} of {:.0f} GB, pressure {}".format(mem["used"]/2**30, mem["total"]/2**30, sysI["pressure"])
+			if key in ("tmMounts", "authd") and d["advice"] and key not in d["over"] and mnt is not None and mnt["timeMachine"] > 0:		# first time only
+				if key == "authd": text += ";  {} Time Machine backup volumes are mounted".format(mnt["timeMachine"])
+				text += ".\n" + self.macHealthTmAdvice()
+			if key == "mounts" and mnt["timeMachine"] > 0: text += ";  {} of them are Time Machine snapshots".format(mnt["timeMachine"])
+			beyond[key] = text
+		if "pressure" in lim and sysI["pressure"] is not None:
+			rank = {"normal": 0, "warning": 1, "critical": 2}
+			if rank.get(sysI["pressure"], 0) >= rank[lim["pressure"]]:
+				beyond["pressure"] = "memory pressure is {}".format(sysI["pressure"])
+		## a single value beyond a limit is often a short peak: it is reported only when the measurement before was beyond as well
+		for key in beyond:
+			if key in d["tripped"]: warnings[key] = beyond[key]
+		d["tripped"] = set(beyond)
+		for key in warnings:
+			self.macHealthWarn("macOsHealth '{}': {}".format(dev.name, warnings[key]))
+		for key in d["over"] - set(warnings):
+			indigo.server.log("macOsHealth '{}': {} is back within the limit".format(dev.name, labels[key]), type="macOsHealth")
+		d["over"] = set(warnings)
+
+		status = "warning" if warnings else "ok"
+		summary = status
+		if cpu is not None:    summary += "   cpu {:.0f}%".format(cpu["busy"])
+		if memPct is not None: summary += "   mem {:.0f}%".format(memPct)
+
+		## states
+		states = []
+		def add(key, value, ui=None, decimals=1):
+			if value is None: return
+			item = {"key": key, "value": value}
+			if not isinstance(value, str):
+				item["value"] = round(value, decimals)
+				item["decimalPlaces"] = decimals
+			if ui is not None: item["uiValue"] = ui
+			states.append(item)
+		add("healthStatus",  status, ui=summary)
+		add("warnings",      " | ".join(sorted(warnings)) if warnings else "none")
+		add("lastMeasured",  datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+		add("cpuCores",      self.mac.nCPUs, decimals=0)
+		add("load1",         load[0], ui="{:.2f}".format(load[0]), decimals=2)
+		add("load5",         load[1], ui="{:.2f}".format(load[1]), decimals=2)
+		add("load15",        load[2], ui="{:.2f}".format(load[2]), decimals=2)
+		if cpu is not None:
+			add("cpuAvg",    cpu["busy"],   ui="{:.1f}%".format(cpu["busy"]))
+			add("cpuUser",   cpu["user"],   ui="{:.1f}%".format(cpu["user"]))
+			add("cpuSystem", cpu["system"], ui="{:.1f}%".format(cpu["system"]))
+			add("cpuMax",    cpuMax,        ui="{:.1f}%".format(cpuMax))
+		if cpuAvgs:
+			add("cpuAvg24h", sum(cpuAvgs)/len(cpuAvgs), ui="{:.1f}%".format(sum(cpuAvgs)/len(cpuAvgs)))
+			add("cpuMax24h", max(cpuMaxs),              ui="{:.1f}%".format(max(cpuMaxs)))
+		if mem is not None:
+			add("memUsedPct", memPct,                ui="{:.1f}%".format(memPct))
+			add("memUsedGB",  mem["used"]/2**30,     ui="{:.1f} GB".format(mem["used"]/2**30))
+			add("memTotalGB", mem["total"]/2**30,    ui="{:.0f} GB".format(mem["total"]/2**30))
+			add("memAvg24h",  sum(mems)/len(mems),   ui="{:.1f}%".format(sum(mems)/len(mems)))
+			add("memMax24h",  max(mems),             ui="{:.1f}%".format(max(mems)))
+		add("memPressure",   sysI["pressure"])
+		add("swapUsedMB",    sysI["swapUsedMB"], ui=None if sysI["swapUsedMB"] is None else "{:.0f} MB".format(sysI["swapUsedMB"]))
+		if disk is not None:
+			add("diskUsedPct", disk["usedPct"],      ui="{:.1f}%".format(disk["usedPct"]))
+			add("diskFreeGB",  disk["free"]/2**30,   ui="{:.0f} GB".format(disk["free"]/2**30))
+		if rates is not None:
+			add("netInKBps",    rates["in"],     ui="{:.1f} KB/s".format(rates["in"]))
+			add("netOutKBps",   rates["out"],    ui="{:.1f} KB/s".format(rates["out"]))
+			add("netInMax24h",  max(netIns),     ui="{:.1f} KB/s".format(max(netIns)))
+			add("netOutMax24h", max(netOuts),    ui="{:.1f} KB/s".format(max(netOuts)))
+		if bridgeRates is not None:
+			add("bridgeInKBps",    bridgeRates["in"],  ui="{:.1f} KB/s".format(bridgeRates["in"]))
+			add("bridgeOutKBps",   bridgeRates["out"], ui="{:.1f} KB/s".format(bridgeRates["out"]))
+			add("bridgeInMax24h",  max(bridgeIns),     ui="{:.1f} KB/s".format(max(bridgeIns)))
+			add("bridgeOutMax24h", max(bridgeOuts),    ui="{:.1f} KB/s".format(max(bridgeOuts)))
+		if top:
+			add("topProcName", top[0][0])
+			add("topProcCpu",  top[0][1], ui="{:.0f}%".format(top[0][1]))
+			add("topProcList", topList)
+		if mnt is not None:
+			add("mountCount",       mnt["total"],       ui="{:.0f}".format(mnt["total"]), decimals=0)
+			add("tmSnapshotMounts", mnt["timeMachine"], ui="{:.0f}".format(mnt["timeMachine"]), decimals=0)
+		add("authdMemMB",    authd, ui=None if authd is None else "{:.0f} MB".format(authd), decimals=0)
+		add("uptimeHours",   None if sysI["uptime"] is None else sysI["uptime"]/3600., ui=None if sysI["uptime"] is None else "{:.1f} h".format(sysI["uptime"]/3600.))
+		## LIVE multicast test (authoritative for this process)
+		blockedNow = (not mct["ok"]) and mct["errno"] in (65, 51)
+		add("localNetworkMulticast", "ok" if mct["ok"] else ("blocked (errno {})".format(mct["errno"]) if mct["errno"] else "failed"))
+
+		## stored consent policy (informational, can lag the live state): of the (often many) denied apps,
+		## only Indigo's own identifiers matter - indigo-server / indigo-plugin-host(-3) make the socket calls.
+		if mc["readable"]:
+			indigoDenied = [x for x in mc["denied"] if ("indigo" in x.lower()) or ("perceptiveautomation" in x.lower())]
+			add("multicastDeniedCount", len(mc["denied"]), ui="{:.0f}".format(len(mc["denied"])), decimals=0)
+			add("multicastDeniedApps",  ", ".join(indigoDenied) if indigoDenied else "none for Indigo ({} other app(s) denied)".format(len(mc["denied"])))
+		else:
+			add("multicastDeniedApps",  "unknown ({})".format(mc["note"]))
+
+		## warn from the LIVE test (not the stale policy), on change only
+		if dev.pluginProps.get("warnMulticastDenied", True):
+			if blockedNow and not d.get("mcBlocked", False):
+				self.macHealthWarn("macOsHealth '{}': Indigo is BLOCKED from Local Network - a live multicast send failed (errno {}). The server/plugins cannot reach the LAN (e.g. a Hue bridge); multicast and TCP/UDP to local devices fail while the internet still works. Fix: System Settings > Privacy & Security > Local Network, enable Indigo, then reboot.".format(dev.name, mct["errno"]))
+			if d.get("mcBlocked", False) and not blockedNow:
+				indigo.server.log("macOsHealth '{}': Local Network (multicast) access is working again".format(dev.name), type="macOsHealth")
+		d["mcBlocked"] = blockedNow
+
+		dev.updateStatesOnServer(states)
+		try:
+			dev.updateStateImageOnServer(indigo.kStateImageSel.SensorTripped if warnings else indigo.kStateImageSel.SensorOn)
+		except:
+			pass
+		if self.ML.decideMyLog("Logic"): self.ML.myLog( text="macOsHealth '{}': {}  top: {}".format(dev.name, summary, topList))
+
+	####-----------------  a warning in the indigo log ---------
+	def macHealthWarn(self, text):
+		try:	self.logger.warning(text)
+		except:	self.errorLog(text)
 
 
 	#################################

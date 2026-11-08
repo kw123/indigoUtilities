@@ -6,6 +6,22 @@
         <Label>utilities Plugin                          Developed by Karl Wachs</Label>
     </Field>
 
+    <Field id="infoLabelAuto" type="label"> <Label>== macOS health device ... </Label>  </Field>
+    <Field    id="autoCreateMacHealth"  type="checkbox"  defaultValue="true" >
+        <Label>... create the "macOS health" device automatically (if none exists, checked at plugin start):</Label>
+    </Field>
+    <Field id="autoCreateMacHealthLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+        <Label>Untick it if you delete the device and do not want it back at the next plugin start.</Label>
+    </Field>
+
+    <Field id="infoLabelFolder" type="label"> <Label>== Indigo folder for devices ... </Label>  </Field>
+    <Field    id="deviceFolderName"  type="textfield"  defaultValue="utilities" >
+        <Label>... DEVICES folder (macOS health devices that are not in a folder yet are moved into it):</Label>
+    </Field>
+    <Field id="deviceFolderNameLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+        <Label>The folder is created if it does not exist. Leave empty to not move devices. Devices you put into another folder yourself stay there.</Label>
+    </Field>
+
     <Field id="infoLabel226" type="label"> <Label>== Debug:... </Label>  </Field>
 
     <Field    id="debugLogic"       type="checkbox"  defaultValue="false"   > <Label>... (1) Logic:</Label>  </Field>
@@ -32,8 +48,15 @@
 
     <Field
         id="yourPassword"
-        type="textfield">
+        type="textfield"
+        secure="true">
         <Label>enter your mac password to lauch cmd line utility</Label>
+    </Field>
+    <Field id="passwordsEncrypted" type="checkbox" defaultValue="true">
+        <Label>store the passwords (mac, postgres) encrypted in the plugin prefs:</Label>
+    </Field>
+    <Field id="passwordsEncryptedLabel" type="label" alignWithControl="true" fontSize="small" fontColor="darkgrey">
+        <Label>Encrypted passwords are tied to this Mac. The fields show the stored (encrypted) value; leave it to keep the password, type a new one to replace it. Passwords from older versions (plain text) are encrypted at the first start; untick to store plain text again.</Label>
     </Field>
 
 

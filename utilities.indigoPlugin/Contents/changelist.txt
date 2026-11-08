@@ -1,3 +1,239 @@
+Added features / changes in v2022.22.66 @ 2026-11-08
+===================================================
+new:
+1.  macOS health device: Local Network / multicast check. Each measurement does a LIVE multicast send from
+    the Indigo process (new state localNetworkMulticast = "ok" / "blocked (errno 65)") - this is authoritative
+    for whether Indigo can reach the LAN right now. When it flips to blocked the device warns once (gated by the
+    new device option "Warn when an app is denied Local Network (multicast)", default on): Indigo can't reach the
+    LAN (e.g. a Hue bridge) while the internet still works; fix = Privacy & Security > Local Network, enable Indigo,
+    reboot (a stuck case needed macOS 27.2 + answering the local-devices prompt yes).
+2.  it also reads the stored consent store (/Library/Preferences/com.apple.networkextension.plist, an
+    NSKeyedArchiver archive parsed with plistlib, read-only, no sudo) for info only: states multicastDeniedCount
+    (apps with DenyMulticast=true) and multicastDeniedApps (Indigo's own ids if present). NOTE: that stored policy
+    can lag the live state (a Mac can list indigo-server as DenyMulticast=true while the live send still works), so
+    the warning uses the live test, not the policy. code in macHealth/macHealth.py (multicastTest, multicastDenied).
+
+==== SHORT SUMMARY since last week (v2022.22.48 -> v2022.22.66) ====
+* New "macOS health" device: measures cpu / memory / disk / network / busiest apps every 5 min, with
+  per-metric warning limits (reported only on two readings in a row). Includes authd memory-leak
+  detection from too many mounted Time Machine backup volumes (watch / warn; unmount by hand).
+* New "sumMeters" device: adds up power, current and energy across other devices (any plugin), with
+  daily min/max/average and sum-of-sums.
+* Mac and postgres passwords are now stored encrypted in the plugin prefs (and masked in the log).
+* "Ping an IP device" is now "Ping / test network access": ping (ICMP) / TCP connect / UDP-multicast,
+  and it diagnoses a macOS "Local Network" permission block vs a real outage.
+
+Added features / changes in v2022.22.65 @ 2026-11-07
+===================================================
+new:
+1.  the old "Ping an IP device" menu is folded into one menu "Ping / test network access (also diagnoses
+    macOS Local Network block)": configurable IP, test type (ping ICMP / TCP connect / UDP-multicast send -
+    the kind of test, NOT the port) and port (shown for tcp/udp only). Runs inside Indigo's process, so it
+    reflects Indigo's own macOS "Local Network" grant (a Terminal test has its own separate grant and cannot
+    see the block; a subprocess the plugin spawns, like /sbin/ping, does run under Indigo's grant). It also
+    probes the public internet, so it distinguishes a Local Network block (target/LAN down, internet up ->
+    errno 65/51 on the socket tests) from a real network outage. Result is logged and shown in the dialog's
+    Status line. (The original ipnumberOfDeviceCallback is retained.)
+2.  that menu's dialog opens at full height: the Port and "Common ports" rows (only shown for TCP / UDP) are counted
+    when Indigo sizes the dialog (alwaysUseInDialogHeightCalc), so the box is no longer too small when they appear.
+3.  the ping test now cross-checks with a TCP connect (:443): macOS does NOT gate ICMP/ping behind the Local Network
+    permission, only TCP/UDP to the LAN, so a ping reply alone gave a false "OK". If ping replies but TCP fails with
+    errno 65/51 while the internet is up, it now reports the Local Network block (the exact pattern a user hit on
+    macOS 27: ping OK, TCP/UDP errno 65).
+
+Added features / changes in v2022.22.64 @ 2026-11-05
+===================================================
+changed:
+1.  the Time Machine backup volumes are only unmounted by hand, never by the plugin. Removed again: the menu choice
+    "unmount them automatically after each backup", the sudo rule installer (install_tm_unmount.sh) and the launchd job
+    (neither was ever installed on the Indigo Mac). Left: tmUnmount/tm_unmount_snapshots.sh (run with sudo bash, shows each
+    volume, "--dry" only looks) and the menu "Time Machine backup volumes" with the choices "watch authd only" (default)
+    and "warn when more volumes than the limits are mounted". A device with the removed choice counts as "watch authd only".
+2.  the advice in the warnings is only the two commands (sudo bash <plugin>/tmUnmount/tm_unmount_snapshots.sh, sudo killall authd).
+3.  the texts about Time Machine (device edit, README, script, advice) are general: no numbers of one Mac (the one measured example is
+    marked as such in the README), the volume limit defaults are 60 and 20 again.
+
+Added features / changes in v2022.22.63 @ 2026-11-05
+===================================================
+new:
+1.  macOsHealth device edit: "Time Machine backup volumes" is one menu with an explanation above it (replaces the box of v62):
+      watch authd only (default): the number of mounted volumes is not checked, only authd; its warning tells how to unmount by hand
+      warn when more volumes than the limits are mounted (mountsLimit, tmMountsLimit, the dialog defaults are now 400)
+      unmount them automatically after each backup (as v62: needs the one-time install_tm_unmount.sh)
+    a device with the v62 box ticked becomes "unmount automatically". Measured: Time Machine mounts all old backups of all
+    destination disks during every hourly backup (~300 volumes) and releases a few per minute, so there are always hundreds.
+2.  the first authd warning has the same advice as the volume warning (commands, one per line) and says how many backup volumes
+    are mounted. The option sentence in the advice names the menu choice.
+3.  Print states shows the choice, and that the two volume limits are not checked in "watch authd only".
+
+Added features / changes in v2022.22.62 @ 2026-11-05
+===================================================
+new:
+1.  macOsHealth device edit: new box "Unmount the Time Machine backup volumes automatically" (default OFF).
+    Time Machine leaves its old backup volumes (/Volumes/.timemachine/*) mounted after each hourly backup, hundreds of
+    mounts make authd leak memory. On: when tmSnapshotMounts is above the snapshot limit (20 without limits) and no backup
+    is running, the plugin runs tmUnmount/tm_unmount_snapshots.sh via sudo -n (own thread) and logs how many were unmounted.
+    One-time setup for sudo in a terminal: sudo bash <plugin>/Contents/Server Plugin/tmUnmount/install_tm_unmount.sh
+    (copies the script to /usr/local/sbin, adds /etc/sudoers.d/tm-unmount for the Indigo user and that file only).
+    Option "launchd" installs a job that runs the script every 5 minutes instead, "remove" removes everything.
+    Without the setup the plugin writes one warning with the command per start of the device.
+2.  the first snapshot warning mentions the new option and where it is (in the device edit of the macOsHealth device).
+3.  the first snapshot warning has the explanation and each command on a line of its own (measured value first).
+4.  automatic unmount: the plugin waits up to 30 minutes for the script (about 100 volumes took 9 minutes).
+5.  the advice in the snapshot warning gives short commands that can be copied from the log: it starts the unmount script
+    (sudo bash '<plugin>/Contents/Server Plugin/tmUnmount/tm_unmount_snapshots.sh', or sudo /usr/local/sbin/tm_unmount_snapshots.sh
+    after the install). In a terminal the script shows each volume (3/109 ..) and how many are left; then  sudo killall authd.
+
+Added features / changes in v2022.22.61 @ 2026-11-05
+===================================================
+new:
+1.  macOsHealth device edit: new box "Expert advice on/off" (default on). On: the first warning that too many Time Machine
+    snapshot volumes are mounted also tells how to fix it (the commands). Off: the warning is only the value and the limit.
+
+Added features / changes in v2022.22.60 @ 2026-11-04
+===================================================
+new:
+1.  new device type sumMeters: adds up power, current and energy states of other indigo devices (any plugin)
+    in device edit per kind: number of sources (0-8), unit of the sum, and per source a device, one of its numeric
+    states and the unit of that state (power mW/W/kW, current mA/A, energy Ws/Wh/kWh/MWh; default W, A, Wh).
+    states: power1..8, current1..8, energy1..8 (source values in the unit of the sum), powerSum, currentSum, energySum,
+    <kind>SumMin/MaxToday(At), <kind>SumAveToday (time weighted) + the same for Yesterday (rolled over at midnight),
+    source_Power, source_Current, source_Energy (source dev ids in slot order), lastSumUpdate.
+    updates when a source state changes (indigo device change subscription) and at least every 5 minutes.
+    sum of sums: a sumMeters device can be a source of another one, its sum state and unit are preselected,
+    loops (A uses B, B uses A) are refused on save. code in sumMeters/sumMeters.py
+2.  sumMeters: states are created dynamically, only for the kinds (power / current / energy) and slots in use
+3.  sumMeters: device edit option per kind "daily min / max / ave" (default on), off = no statistics states for that kind
+
+Added features / changes in v2022.22.59 @ 2026-11-04
+===================================================
+changed:
+1.  macOS health device: the cpu warnings list the busiest apps as a table, one line per app with the columns lined up
+    (name [pid], cpu, average cpu since start, memory, run time, and for plugins the plugin id, version and sub
+    processes). The first line of the warning is shorter: the "average of 2 readings" is in brackets.
+
+Added features / changes in v2022.22.58 @ 2026-11-03
+===================================================
+changed:
+1.  macOS health device: the log line "open files of the busiest apps" is not printed any more (it was added in
+    v2022.22.56). The open files of the plugins are still in the menu "Print plugin id, names, cpu, ...".
+
+Added features / changes in v2022.22.57 @ 2026-11-03
+===================================================
+changed:
+1.  macOS health device: the limits for "network in" and "network out" are now in Mb/s (megabit per second, 1 Mb/s =
+    122 KByte/s) instead of KByte/s. The fields are new (netInMbLimit, netOutMbLimit): a network limit saved before
+    in KB/s is not used any more and has to be entered again in Mb/s, otherwise the network is not checked.
+    The states netInKBps, netOutKBps (and the 24 h values) stay in KByte/s. Warning text and "Print states" show Mb/s.
+
+Added features / changes in v2022.22.56 @ 2026-11-03
+===================================================
+changed:
+1.  macOS health device: fixed schedule, a measurement every 5 minutes. Each one is the average of 2 readings 45 seconds
+    apart (cpu, network, busiest apps). The menu "Time window" (1 .. 10 minutes) in the device dialog is gone, a
+    value saved earlier is ignored. The first measurement is shown ~90 seconds after the device starts.
+    cpuMax still covers the whole 5 minutes. Memory, swap, disk, load, mounts and authd are read at the end.
+new:
+2.  busiest apps (in the warning, state topProcList has the short form): more information for every app:
+    average cpu since the process started, real memory, run time; for Indigo plugins also plugin id and version.
+    The processes a plugin started (sub processes) are counted to the plugin and not listed on their own.
+
+Added features / changes in v2022.22.55 @ 2026-11-02
+===================================================
+changed:
+1.  macOS health device: a limit is reported only when it is exceeded at two measurements in a row. A single short peak
+    (cpu, network, ...) no longer gives a warning and does not turn the device to "warning". After the first measurement
+    beyond a limit nothing is shown, if the next one is still beyond, the warning appears and then repeats at every
+    measurement until the value is back within the limit. This applies to all limits, including memory pressure.
+
+Added features / changes in v2022.22.54 @ 2026-11-02
+===================================================
+changed:
+1.  macOS health device, busiest apps: the process id is shown in brackets, e.g. smbd [28600] 100%. Several processes
+    with the same name are still added up as one app: "Chrome Helper x6 [2208]" (number of processes, pid of the busiest).
+2.  every Indigo plugin runs in its own IndigoPluginHost3 process. They were added up as one "IndigoPluginHost3" (all
+    plugins together looked busier than any single plugin). They are now listed one by one with the plugin name:
+    "IndigoPluginHost3 piBeacon [27541] 30%". The name is taken from the command line (-f<plugin>.indigoPlugin).
+
+Added features / changes in v2022.22.53 @ 2026-11-02
+===================================================
+new:
+1.  macOS health device: the thunderbolt bridge (bridge0, link between two Macs, screen sharing) is counted separately:
+    new states bridgeInKBps, bridgeOutKBps, bridgeInMax24h, bridgeOutMax24h and a device field "Bridge (thunderbolt link)
+    to count separately" (default bridge0, empty = off). The states exist only if the interface exists.
+changed:
+2.  network states / limits with the field "Network interfaces" empty: the en* interfaces that are members of a bridge
+    (en2, en3, .. of bridge0) are no longer added up, their traffic belongs to the bridge. (Before, the sending half of
+    the thunderbolt link was in "network out".) If no other interface exists they are used.
+3.  the description of the field says that local traffic (lo0) is not counted unless it is listed.
+4.  "Print states": the limits table has a first column as wide as the longest label, so the columns line up.
+
+
+Added features / changes in v2022.22.52 @ 2026-11-02
+===================================================
+new:
+1.  macOS health device: authd leak detection. macOS checks an authorization for every mounted volume twice a minute
+    and authd leaks memory with every check; hundreds of mounted Time Machine snapshot volumes make authd grow to
+    many GB. New states mountCount, tmSnapshotMounts (volumes under /Volumes/.timemachine/) and authdMemMB (resident
+    size of authd, from ps), measured with every measurement (one /sbin/mount and one ps, no sudo).
+2.  3 new limits in the device dialog (suggested 60 / 20 / 500 MB, apply when "print a warning" is ticked). The first
+    warning for too many snapshot mounts also says what to do: wait until tmutil status shows no backup running,
+    unmount the snapshot volumes, sudo killall authd (commands in the log text, the device dialog and the README).
+3.  state explanations and the "Print states" output have a new group "Volumes and authd"; the state name column of the
+    "Print states" output is as wide as the longest name, so all values line up.
+
+
+Added features / changes in v2022.22.51 @ 2026-11-02
+===================================================
+new:
+1.  macOS health device dialog: new option "Self reporting" (default off). Off = the cpu used by the utilities
+    plugin process and by the commands it starts for measuring is subtracted from cpuAvg / cpuUser / cpuSystem /
+    cpuMax (also for the 15 sec peak readings and the cpu limits), and that process is not listed as busiest
+    app (topProcName / topProcCpu / topProcList and the busiest-app limit). On = counted like any program.
+2.  the time window (1 .. 10 minutes, default 5) moved from the plugin config to the macOS health device
+    dialog (field "Time window, measure every"), so each device has its own. A changed window counts after OK.
+    Devices that have no value yet use 5 minutes.
+changed:
+3.  ps now also reads the parent pid (needed to recognise the commands started by the plugin).
+
+
+Added features / changes in v2022.22.50 @ 2026-11-01
+===================================================
+new:
+1.  the Mac password and the postgres password are stored encrypted in the plugin prefs ("enc1:..", new file
+    pwCrypt.py, standard library only, key bound to the hardware UUID of the Mac). New config item
+    "store the passwords encrypted" is the flag that says if the stored passwords are encrypted: prefs of older
+    versions (no flag) keep working with their plain text passwords and are encrypted once at the first start;
+    unticking it stores plain text again. Password fields: leave unchanged to keep, type to replace.
+2.  passwords are masked ("*****") in the commands that are written to the log (powermetrics, postgres
+    dump, SQL delete / count commands). Before, they were visible there.
+3.  new config option "create the macOS health device automatically" (default on): at plugin start one
+    "Mac health" device is created if none exists.
+4.  the time window (measure interval of the macOS health devices) is a menu of 1 .. 10 minutes, default 5
+    (it was in the plugin config in this version only; in v2022.22.51 it is a field of the device dialog).
+5.  device dialog: clearer explanation of the cpu states (cpuAvg, cpuUser, cpuSystem, cpuMax, 24h values, load) with an
+    example, same text for the "Print states" log output; limit fields name the state they check.
+
+
+Added features / changes in v2022.22.49 @ 2026-10-31
+===================================================
+new:
+1.  new device type "macOS health": measures cpu, memory, disk, network and the app with the highest
+    cpu use of the Mac that runs indigo, every 5 minutes (1 .. 60 minutes selectable).
+    states: cpuAvg / cpuMax / cpuUser / cpuSystem + 24h average and max, load average, memory used
+    (as activity monitor counts it) + pressure + swap, startup disk used / free, network in / out KB/s,
+    topProcName / topProcCpu / topProcList, uptime, healthStatus (starting / ok / warning).
+2.  optional limits per device: cpu average, memory used and startup disk used above xx % print a
+    warning to the log at every measurement (the cpu warning names the busiest apps) and set
+    healthStatus to "warning"; a log line says when the value is back below the limit.
+3.  limits are fields of the device dialog (always visible): cpu average, cpu max, busiest app, load, memory used,
+    memory pressure, swap, disk used, disk free, network in, network out.
+4.  device dialog: explanation of all states, button "Print states" writes the states (grouped, with unit and
+    meaning) and the limits next to the current values to the log.
+5.  config: Indigo DEVICES folder name (default "utilities"), macOS health devices that are not in a folder are moved into it.
+6.  new files:  Devices.xml, macHealth/macHealth.py (no indigo dependency, can be run on its own)
+
+
 Added features / changes in v2022.22.48 @ 2026-08-26
 ===================================================
 new:

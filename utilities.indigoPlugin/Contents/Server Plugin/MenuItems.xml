@@ -3,31 +3,74 @@
 
 
 
-	<MenuItem id="pingIpDevice">
-	<Name>Ping an IP device..</Name>
+	<MenuItem id="testNetworkAccess">
+	<Name>Ping / test network access (also diagnoses macOS Local Network block)..</Name>
 		<ConfigUI>
 				<Field
 					id="infoLabel1"
 					type="label">
-					<Label>Utility to ping an ip device, output is send to logfile</Label>
+					<Label>Tests whether THIS Indigo process can reach a host - by ping (ICMP), a TCP connect, or a UDP/multicast send. Runs inside Indigo, the only context whose macOS "Local Network" permission matters (a Terminal test has its own separate grant and cannot see the block). It also checks the public internet, so it can tell a Local Network block (host/LAN down, internet up) from a real network outage. Result goes to the log and the Status line below.</Label>
 				</Field>
 
 				<Field
-					id="ipDevice"
+					id="ip"
 					type="textfield"
 					defaultValue="192.168.1.1"
-					tooltip="">
-					<Label>ip-number of device to be ping-ed</Label>
+					tooltip="IPv4 address of the host to test. For the mDNS multicast test use 224.0.0.251.">
+					<Label>IP address to test:</Label>
 				</Field>
+
+				<Field
+					id="testType"
+					type="menu"
+					defaultValue="ping"
+					tooltip="The kind of test, NOT the port. ping = ICMP (/sbin/ping). TCP connect = can we open host:port. UDP/multicast send = the operation macOS blocks first when Local Network access is denied.">
+					<List>
+						<Option value="ping">ping (ICMP, /sbin/ping)</Option>
+						<Option value="tcp" >TCP connect (unicast reachability)</Option>
+						<Option value="udp" >UDP / multicast send (use 224.0.0.251:5353 for mDNS)</Option>
+					</List>
+					<Label>Test type:</Label>
+				</Field>
+
+				<Field
+					id="port"
+					type="textfield"
+					defaultValue="443"
+					visibleBindingId="testType"
+					visibleBindingValue="tcp,udp"
+					alwaysUseInDialogHeightCalc="true"
+					tooltip="TCP/UDP port (not used for ping). 443 = https (e.g. a Hue bridge), 5353 = mDNS multicast.">
+					<Label>Port:</Label>
+				</Field>
+
+				<Field
+					id="portExamples"
+					type="label"
+					fontColor="darkgray"
+					fontSize="small"
+					visibleBindingId="testType"
+					visibleBindingValue="tcp,udp"
+					alwaysUseInDialogHeightCalc="true">
+					<Label>Common ports:  TCP 443 https (Hue bridge, many devices),  80 http,  22 ssh,  1883 MQTT (8883 MQTT/TLS),  8123 Home Assistant,  502 Modbus,  23 telnet.    UDP: 5353 mDNS (IP 224.0.0.251),  1900 SSDP,  123 NTP,  53 DNS.</Label>
+				</Field>
+
 				<Field
 					id="execute"
 					type="button"	>
-					<Label> ....after selection click</Label><Title>EXECUTE</Title> <CallbackMethod>ipnumberOfDeviceCallback</CallbackMethod>
+					<Label> ....after selection click</Label><Title>EXECUTE</Title> <CallbackMethod>testNetworkAccessCallback</CallbackMethod>
 				</Field>
-		
+
+				<Field
+					id="result"
+					type="textfield"
+					readonly="true"
+					defaultValue="">
+					<Label>Status----------------->  </Label>
+				</Field>
 		</ConfigUI>
 	</MenuItem>
-  
+
 
 	 <MenuItem id="printStuff">
 		<Name>Print Stuff to log..</Name>
